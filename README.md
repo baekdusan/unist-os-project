@@ -1,1 +1,2 @@
-# UNIST OS PROJECT
+# CSCC69-Pintos
+
