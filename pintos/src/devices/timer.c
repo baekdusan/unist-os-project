@@ -20,6 +20,7 @@
 /* Number of timer ticks since OS booted. */
 static int64_t ticks;
 
+
 /* Number of loops per timer tick.
    Initialized by timer_calibrate(). */
 static unsigned loops_per_tick;
@@ -66,7 +67,7 @@ timer_calibrate (void)
   printf ("%'"PRIu64" loops/s.\n", (uint64_t) loops_per_tick * TIMER_FREQ);
 }
 
-/* Returns the number of timer ticks since the OS booted. */
+/* Returns the number of timer ticks since the OS booted. */ //OS가 boot된 이후 timer tick이구나..
 int64_t
 timer_ticks (void) 
 {
@@ -81,19 +82,29 @@ timer_ticks (void)
 int64_t
 timer_elapsed (int64_t then) 
 {
-  return timer_ticks () - then;
+  return timer_ticks () - then; //현재 tick에서 then을 빼준것.
 }
 
 /* Sleeps for approximately TICKS timer ticks.  Interrupts must
    be turned on. */
 void
-timer_sleep (int64_t ticks) 
+timer_sleep (int64_t ticks)  //현재 busy wait으로 기다리고 있기 때문에 문제가 되는 부분. //tick 만큼 sleep.
 {
-  int64_t start = timer_ticks ();
+  int64_t start = timer_ticks (); //현재 tick반환.
+  int64_t when_wakeup_tick = start + ticks; //이 tick이 될 때 이 thread는 일어나야한다.
 
   ASSERT (intr_get_level () == INTR_ON);
-  while (timer_elapsed (start) < ticks) 
-    thread_yield ();
+// 이 사이에 context switch가 일어나면 start값이 invalid할 수 있다는 것인가??
+  if(timer_elapsed(start) < ticks){ //이제는 when_wakeup_tick이 지나야 깨우므로 if만으로 충분.
+    thread_sleep(when_wakeup_tick); //sleep list에 넣어줌.
+  }
+
+  /* 기존 busy waiting part.
+//  while (timer_elapsed (start) < ticks)  //이걸 계속해서 확인해주고 있음. sleep해줘야함.
+//      //여기에 sleep list에 들어가도록 구현해야하나?
+//    thread_yield(); //thread_yeild도 여기서 실행하지만 thread.c에 구현되어있음.
+  //여기에 wakeup()을 넣으면 되나?
+   */
 }
 
 /* Sleeps for approximately MS milliseconds.  Interrupts must be
@@ -168,10 +179,13 @@ timer_print_stats (void)
 
 /* Timer interrupt handler. */
 static void
-timer_interrupt (struct intr_frame *args UNUSED)
+timer_interrupt (struct intr_frame *args UNUSED) // 매 tick마다 실행이 되네 timer interrupt handler니까. 여기에서 sleep list에서 깨어나야 할 thread가 있는지를 check하고 있으면 wake up function call하기.
 {
   ticks++;
-  thread_tick ();
+  thread_tick (); //update the cpu usage for running process // CPU 잘 쓰고있는지 나중에 statistic을 위한 것 아닐까?
+  if(global_wakeup_tick <= ticks){ // global_wakeup_tick보다 현재 ticks가 같거나 커지면 꺠워줘야할 thread존재.
+    thread_wakeup(ticks); //sleep list에서 깨워줌.
+  }
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer

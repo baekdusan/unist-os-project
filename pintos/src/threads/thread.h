@@ -2,7 +2,7 @@
 #define THREADS_THREAD_H
 
 #include <debug.h>
-#include <list.h>
+#include <list.h> //여기서 list.h를 include하고 있어서 thread.c에서 list를 사용할 수 있던 것.
 #include <stdint.h>
 
 /* States in a thread's life cycle. */
@@ -80,7 +80,7 @@ typedef int tid_t;
    only because they are mutually exclusive: only a thread in the
    ready state is on the run queue, whereas only a thread in the
    blocked state is on a semaphore wait list. */
-struct thread
+struct thread //thread structure있는 곳.
   {
     /* Owned by thread.c. */
     tid_t tid;                          /* Thread identifier. */
@@ -88,10 +88,15 @@ struct thread
     char name[16];                      /* Name (for debugging purposes). */
     uint8_t *stack;                     /* Saved stack pointer. */
     int priority;                       /* Priority. */
+    // 전역 allelem에 들어갈 double linked list의 구성요소.
     struct list_elem allelem;           /* List element for all threads list. */
 
     /* Shared between thread.c and synch.c. */
+    //나중에 lock같은거 얻을 때 기다리는 thread이런거 저장할 때 쓰나봄.
+    //특정 list에 쓰도록 두는 double linked list 요소? thread_yeild 함수에도 쓰임
+    //그런걸 보니까 더더욱이 맞는듯.
     struct list_elem elem;              /* List element. */
+    int64_t tick_wakeup; //local tick thread가 sleep일 때, 일어나야 하는 tick저장.
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
@@ -100,6 +105,7 @@ struct thread
 
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
+
   };
 
 /* If false (default), use round-robin scheduler.
@@ -126,6 +132,10 @@ const char *thread_name (void);
 void thread_exit (void) NO_RETURN;
 void thread_yield (void);
 
+bool tick_less (const struct list_elem *a, const struct list_elem *b, void *aux); // 이거 구현했음.
+void thread_sleep(int64_t ticks); //thread.c에 추가한 함수.
+void thread_wakeup(int64_t ticks); //thread.c에 추가한 함수. ticks보다 작거나 같은거 다 ready로 옮김.
+
 /* Performs some operation on thread t, given auxiliary data AUX. */
 typedef void thread_action_func (struct thread *t, void *aux);
 void thread_foreach (thread_action_func *, void *);
@@ -137,5 +147,7 @@ int thread_get_nice (void);
 void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
+
+extern int64_t global_wakeup_tick; //thread.c에 추가한 전역변수.인데 이렇게 하면 timer에 연결 되려나..?
 
 #endif /* threads/thread.h */

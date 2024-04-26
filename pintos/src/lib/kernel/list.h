@@ -87,7 +87,7 @@
 #include <stdint.h>
 
 /* List element. */
-struct list_elem 
+struct list_elem //이게 list_elem인가봄. 앞뒤로 주소만 가지고 있네. double linked list??
   {
     struct list_elem *prev;     /* Previous list element. */
     struct list_elem *next;     /* Next list element. */

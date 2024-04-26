@@ -22,11 +22,13 @@
 
 /* List of processes in THREAD_READY state, that is, processes
    that are ready to run but not actually running. */
-static struct list ready_list;
+static struct list ready_list; //static 변수는 프로그램의 시작부터 종료까지 메모리에 존재함. 이게 선언된 소스파일 내에서만 접근 가능. 여기서 선언을 해주고 있음.
 
 /* List of all processes.  Processes are added to this list
    when they are first scheduled and removed when they exit. */
 static struct list all_list;
+
+static struct list sleep_list; //busy waiting을 없애기 위한 sleep list 추가.
 
 /* Idle thread. */
 static struct thread *idle_thread;
@@ -44,6 +46,10 @@ struct kernel_thread_frame
     thread_func *function;      /* Function to call. */
     void *aux;                  /* Auxiliary data for function. */
   };
+
+//sleep list안의 최소 tick을 유지. timer.c에서도 접근 가능해야해서 global로 선언.
+int64_t global_wakeup_tick = INT64_MAX; //thread.c/h에서 timer.c/h를 include해주지 않아서 여기에 함.
+
 
 /* Statistics. */
 static long long idle_ticks;    /* # of timer ticks spent idle. */
@@ -85,13 +91,14 @@ static tid_t allocate_tid (void);
    It is not safe to call thread_current() until this function
    finishes. */
 void
-thread_init (void) 
+thread_init (void)  //main에서 단 한번 실행하는 부분임. 그래서 list같은거 init을 여기서 해주는 것임. init.c의 main에서 호출함.
 {
   ASSERT (intr_get_level () == INTR_OFF);
 
   lock_init (&tid_lock);
   list_init (&ready_list);
   list_init (&all_list);
+  list_init (&sleep_list); //sleep list 추가했음.
 
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
@@ -237,7 +244,7 @@ thread_unblock (struct thread *t)
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
-  list_push_back (&ready_list, &t->elem);
+  list_push_back (&ready_list, &t->elem); //list 변경시에 interrupt disable.
   t->status = THREAD_READY;
   intr_set_level (old_level);
 }
@@ -299,19 +306,19 @@ thread_exit (void)
 /* Yields the CPU.  The current thread is not put to sleep and
    may be scheduled again immediately at the scheduler's whim. */
 void
-thread_yield (void) 
+thread_yield (void)  //여기 thread_yield
 {
-  struct thread *cur = thread_current ();
+  struct thread *cur = thread_current (); //현재 thread structure pointer.
   enum intr_level old_level;
   
   ASSERT (!intr_context ());
 
-  old_level = intr_disable ();
-  if (cur != idle_thread) 
-    list_push_back (&ready_list, &cur->elem);
+  old_level = intr_disable (); //아마 현재 interrupt level을 반환하는 것 같음. //disable the interrupt and return previous interrupt state
+  if (cur != idle_thread)  //지금이 idle thread가 아니라면,
+    list_push_back (&ready_list, &cur->elem); //ready queue의 뒤로 넣음. //elem이 이런거에 쓰라는 doble linked list요소인듯.
   cur->status = THREAD_READY;
-  schedule ();
-  intr_set_level (old_level);
+  schedule ();                  //context switch
+  intr_set_level (old_level); //interupt state 되돌리기 //set a state of interrupt to the state passed to parameter and return previous interrupt state
 }
 
 /* Invoke function 'func' on all threads, passing along 'aux'.
@@ -561,7 +568,7 @@ schedule (void)
   ASSERT (is_thread (next));
 
   if (cur != next)
-    prev = switch_threads (cur, next);
+    prev = switch_threads (cur, next); //switch.S에 구현되어있음. register value 4개 교체해주는 작업.
   thread_schedule_tail (prev);
 }
 
@@ -582,3 +589,66 @@ allocate_tid (void)
 /* Offset of `stack' member within `struct thread'.
    Used by switch.S, which can't figure it out on its own. */
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
+
+bool tick_less(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED){ ///이거 list에 선언했어서 오류났었음. threadstruct 다 되기 전에 선언했다고. list파일이 thread보다 먼저 compile되나봄.
+    struct thread *thread_a = list_entry(a, struct thread, elem); //list_entry는 앞과 같이 사용하면 elem의 thread struct를 반환해줌.
+    struct thread *thread_b = list_entry(b, struct thread, elem);
+    return thread_a->tick_wakeup < thread_b->tick_wakeup; //a가 작을 때 true를 반환해주면 오름차순으로 정렬됨.
+}
+
+//project1 thread sleep 함수 추가. cur안넣어줘서 여기서 cur 받으면 됨. 해당 thread가 실행할 함수니까.
+void thread_sleep(int64_t ticks){
+    enum intr_level old_level;
+    struct thread *t = thread_current(); //running_thread()를 실행한 것이 맞지만 sanity check이 추가된 버전임.
+    if(t == idle_thread){
+        return; //일단 idle thread일 떄 어떻게 처리하라는 것이 없음. 그리고 idle이 이걸 호출하지도 않을듯.
+    }
+    else{
+        old_level = intr_disable ();
+        t -> status = THREAD_BLOCKED;
+        t -> tick_wakeup = ticks;
+        if(global_wakeup_tick > ticks){ //이건 global인데 lock안해줘도 되나?? 근데 이미 disable intrrupt상태.
+            global_wakeup_tick = ticks;
+        }
+//        list_push_back(&sleep_list, &t->elem); // list에 넣을 때 이렇게 넣음. 정렬은 언제하지??
+        list_insert_ordered(&sleep_list, &t->elem, tick_less, NULL); //tick이 작은 순서로 정렬됨.
+        schedule(); //context switch해줌.
+        intr_set_level (old_level); // ready_list부분에서도 이렇게 list 수정시 intrdisable해줌. 이렇게하면 이 thread가 다시 깨어날 때, intr를 다시 푸는건데 괜찮나..?
+        //근데 위에 구현된 thread_yeild()에서도 interrupt enable의 위치가 여기가 맞음.
+    }
+}
+//list.c에 tick_less함수를 구현해주었음.
+
+/// list ordered를 사용하려면 아래와 같이 어떤 것을 낮은 oreder로 할지를 설정해줘야함.
+///* Compares the value of two list elements A and B, given
+//   auxiliary data AUX.  Returns true if A is less than B, or
+//   false if A is greater than or equal to B. */
+//typedef bool list_less_func (const struct list_elem *a,
+//                             const struct list_elem *b,
+//                             void *aux);
+//void list_insert_ordered (struct list *, struct list_elem *,
+//                          list_less_func *, void *aux);
+
+void thread_wakeup(int64_t ticks){ //받은 ticks는 현재 system의 tick.
+    if(list_empty(&sleep_list)){
+        global_wakeup_tick = INT64_MAX; //최대로 설정해야 나중에 list에 추가되는 thread의 tick으로 global이 변경됨.
+        return;
+    }
+    struct list_elem *e;
+    struct thread *t;
+    enum intr_level old_level;
+    old_level = intr_disable();
+    e = list_begin(&sleep_list);
+    while(e != list_end(&sleep_list)){ //list_end의 는 tail임 그래서 이렇게 하면 전체 다 돌음.
+        t = list_entry(e, struct thread, elem); //현재 elem의 thread struct. elem인지 list_elem인지 헷갈림.
+        if(t -> tick_wakeup <= ticks){
+            e =list_remove(e); //다음거 받기.
+            thread_unblock(t); //thread를 ready list에 넣음. ready state로도 변경됨.
+        }
+        else{
+            global_wakeup_tick = t -> tick_wakeup; //global tick을 다음에 깨워야 하는 thread의 tick으로 설정.
+            break;
+        }
+    }
+    intr_set_level(old_level);
+}

@@ -13,7 +13,7 @@
                   <---| head |<--->| tail |--->
                       +------+     +------+
 
-   A list with two elements in it looks like this:
+   A list with two elements in it looks like this: //아! head와 tail이라는 virtual element가 있구나!!
 
         +------+     +-------+     +-------+     +------+
     <---| head |<--->|   1   |<--->|   2   |<--->| tail |<--->
@@ -62,8 +62,8 @@ list_init (struct list *list)
 {
   ASSERT (list != NULL);
   list->head.prev = NULL;
-  list->head.next = &list->tail;
-  list->tail.prev = &list->head;
+  list->head.next = &list->tail; //init시에 head는 tail을 가리키고
+  list->tail.prev = &list->head; // tail은 head를 가리킴.
   list->tail.next = NULL;
 }
 

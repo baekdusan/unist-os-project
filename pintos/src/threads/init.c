@@ -87,7 +87,7 @@ main (void)
 
   /* Initialize ourselves as a thread so we can use locks,
      then enable console locking. */
-  thread_init ();
+  thread_init (); //main에서 단 한번 init을 하는구나.
   console_init ();  
 
   /* Greet user. */
