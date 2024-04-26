@@ -1,2 +1,0 @@
-# CSCC69-Pintos
-
