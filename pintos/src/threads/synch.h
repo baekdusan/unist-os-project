@@ -8,7 +8,7 @@
 struct semaphore 
   {
     unsigned value;             /* Current value. */
-    struct list waiters;        /* List of waiting threads. */
+    struct list waiters;        /* List of waiting threads. */ //list.h에 정의되어있음. head, tail을 가진 상태. 그래서 저 waiters가 wait list네.
   };
 
 void sema_init (struct semaphore *, unsigned value);
@@ -36,10 +36,14 @@ struct condition
     struct list waiters;        /* List of waiting threads. */
   };
 
+bool cond_priority_large(const struct list_elem *a, const struct list_elem *b, void *aux);
 void cond_init (struct condition *);
 void cond_wait (struct condition *, struct lock *);
 void cond_signal (struct condition *, struct lock *);
 void cond_broadcast (struct condition *, struct lock *);
+
+void reassign_priority(struct thread *cur);
+void priority_donation(struct thread *cur);
 
 /* Optimization barrier.
 

@@ -7,7 +7,7 @@
    use of dynamically allocated memory.  Instead, each structure
    that is a potential list element must embed a struct list_elem
    member.  All of the list functions operate on these `struct
-   list_elem's.  The list_entry macro allows conversion from a
+   list_elem's.  The list_entry macro allows conversion from a //list_elem함수를 통해서 struct list_elem을 선언한 object의 주소를 가질 수 있음.
    struct list_elem back to a structure object that contains it.
 
    For example, suppose there is a needed for a list of `struct
@@ -102,7 +102,7 @@ struct list
 
 /* Converts pointer to list element LIST_ELEM into a pointer to
    the structure that LIST_ELEM is embedded inside.  Supply the
-   name of the outer structure STRUCT and the member name MEMBER
+   name of the outer structure STRUCT and the member name MEMBER //list_elem, structure name, element로 찾음.
    of the list element.  See the big comment at the top of the
    file for an example. */
 #define list_entry(LIST_ELEM, STRUCT, MEMBER)           \

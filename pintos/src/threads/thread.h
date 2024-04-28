@@ -4,6 +4,7 @@
 #include <debug.h>
 #include <list.h> //여기서 list.h를 include하고 있어서 thread.c에서 list를 사용할 수 있던 것.
 #include <stdint.h>
+#include "synch.h"
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -88,6 +89,7 @@ struct thread //thread structure있는 곳.
     char name[16];                      /* Name (for debugging purposes). */
     uint8_t *stack;                     /* Saved stack pointer. */
     int priority;                       /* Priority. */
+    int original_priority;              // priority donation 되었을 때, realse하면 restore에 필요한 것.
     // 전역 allelem에 들어갈 double linked list의 구성요소.
     struct list_elem allelem;           /* List element for all threads list. */
 
@@ -96,7 +98,11 @@ struct thread //thread structure있는 곳.
     //특정 list에 쓰도록 두는 double linked list 요소? thread_yeild 함수에도 쓰임
     //그런걸 보니까 더더욱이 맞는듯.
     struct list_elem elem;              /* List element. */
+
     int64_t tick_wakeup; //local tick thread가 sleep일 때, 일어나야 하는 tick저장.
+    struct lock *wait_lock; //한 thread어차피 한 lock밖에 대기 못함. 해당 lock 구조체 주소 저장.
+    struct list_elem d_elem;              //donation element
+    struct list donations; //multiple donation 문제를 해결하기 위한 list.
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
@@ -131,7 +137,9 @@ const char *thread_name (void);
 
 void thread_exit (void) NO_RETURN;
 void thread_yield (void);
+void check_preempt(void);
 
+bool priority_large(const struct list_elem *a, const struct list_elem *b, void *aux);
 bool tick_less (const struct list_elem *a, const struct list_elem *b, void *aux); // 이거 구현했음.
 void thread_sleep(int64_t ticks); //thread.c에 추가한 함수.
 void thread_wakeup(int64_t ticks); //thread.c에 추가한 함수. ticks보다 작거나 같은거 다 ready로 옮김.

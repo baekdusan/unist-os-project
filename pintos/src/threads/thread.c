@@ -171,7 +171,7 @@ thread_print_stats (void)
    Priority scheduling is the goal of Problem 1-3. */
 tid_t
 thread_create (const char *name, int priority,
-               thread_func *function, void *aux) 
+               thread_func *function, void *aux)  //thread create 시 초기화 되는 것들. 초기 priority도 이때 받아서 설정되네.
 {
   struct thread *t;
   struct kernel_thread_frame *kf;
@@ -207,6 +207,9 @@ thread_create (const char *name, int priority,
 
   /* Add to run queue. */
   thread_unblock (t);
+  if(t -> priority > thread_current() -> priority){ //새롭게 추가된 thread가 현재 thread보다 priority 높으면 바로 yield.
+      thread_yield();
+  }
 
   return tid;
 }
@@ -235,8 +238,14 @@ thread_block (void)
    be important: if the caller had disabled interrupts itself,
    it may expect that it can atomically unblock a thread and
    update other data. */
+bool priority_large(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED){
+    struct thread *thread_a = list_entry(a, struct thread, elem);
+    struct thread *thread_b = list_entry(b, struct thread, elem);
+    return thread_a->priority > thread_b->priority; //a의 priority가 높을 때 true less function이 true면 멈추고 그 자리에 넣음.
+}
+
 void
-thread_unblock (struct thread *t) 
+thread_unblock (struct thread *t) //block상태에 있던 thread state 변경 후 ready queue에 넣어주는 코드.
 {
   enum intr_level old_level;
 
@@ -244,8 +253,8 @@ thread_unblock (struct thread *t)
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
-  list_push_back (&ready_list, &t->elem); //list 변경시에 interrupt disable.
-  t->status = THREAD_READY;
+  list_insert_ordered(&ready_list, &t->elem, priority_large, NULL);
+  t->status = THREAD_READY; //이렇게 해보려고 했는데 test에서 timeout남. slide대로 thread_create에만 넣자.
   intr_set_level (old_level);
 }
 
@@ -314,8 +323,9 @@ thread_yield (void)  //여기 thread_yield
   ASSERT (!intr_context ());
 
   old_level = intr_disable (); //아마 현재 interrupt level을 반환하는 것 같음. //disable the interrupt and return previous interrupt state
-  if (cur != idle_thread)  //지금이 idle thread가 아니라면,
-    list_push_back (&ready_list, &cur->elem); //ready queue의 뒤로 넣음. //elem이 이런거에 쓰라는 doble linked list요소인듯.
+//  if (cur != idle_thread)  //지금이 idle thread가 아니라면,
+//      list_insert_ordered(&ready_list, &cur->elem, priority_large, NULL); //ready list에 order에 맞게 넣음.
+    list_insert_ordered(&ready_list, &cur->elem, priority_large, NULL); //이렇게 안하면 idle도 재실행이 안될 것 같아서 위랑 둘 중에 뭐가 맞는지 모르겠음.
   cur->status = THREAD_READY;
   schedule ();                  //context switch
   intr_set_level (old_level); //interupt state 되돌리기 //set a state of interrupt to the state passed to parameter and return previous interrupt state
@@ -338,11 +348,31 @@ thread_foreach (thread_action_func *func, void *aux)
     }
 }
 
+void check_preempt(void){ //현재 thread의 priority와 ready list맨앞과의 priority를 비교해서 ready가 높으면 yield.
+    if(!list_empty(&ready_list)){
+        struct thread *ready_list_first_thread = list_entry(list_begin(&ready_list), struct thread, elem);
+        if(thread_current()->priority < ready_list_first_thread->priority){
+            if(thread_current() != idle_thread){
+                thread_yield();
+            }
+        }
+    }
+}
+
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void
 thread_set_priority (int new_priority) 
 {
-  thread_current ()->priority = new_priority;
+  thread_current ()-> original_priority = new_priority;
+  //이렇게 priority를 바꾸고 나면 다시 ready list를 정렬해줘야함.
+
+  reassign_priority(thread_current()); //priority재설정해줌 지금 새로 assign된걸로 priority 변경하고 donationlist에서도 다시 찾고.
+    enum intr_level old_level = intr_disable ();
+    list_sort(&ready_list, priority_large, NULL); //일단 slide에 따르면 이것만 하는데 추가로 schduling을 해줘야 하는지는 의문임.
+    intr_set_level (old_level);
+  //priority_donation(thread_current()); //위에서 이미 이것도 호출해서 필요없음.
+  //아 current thread의 priority가 낮아질 수도 있구나. 그러니까 이걸 check해줘야함.
+  check_preempt(); // 나중에 더 써야하는 것이라 함수로 만듬.
 }
 
 /* Returns the current thread's priority. */
@@ -469,7 +499,9 @@ init_thread (struct thread *t, const char *name, int priority)
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
+  t->original_priority = priority; // original_priority 초기화
   t->magic = THREAD_MAGIC;
+  list_init (&t->donations); //donation list 초기화
 
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
@@ -495,7 +527,7 @@ alloc_frame (struct thread *t, size_t size)
    will be in the run queue.)  If the run queue is empty, return
    idle_thread. */
 static struct thread *
-next_thread_to_run (void) 
+next_thread_to_run (void) //ready list의 맨 앞에 있는 thread를 다음 run으로 잡음.
 {
   if (list_empty (&ready_list))
     return idle_thread;
@@ -520,7 +552,7 @@ next_thread_to_run (void)
    After this function and its caller returns, the thread switch
    is complete. */
 void
-thread_schedule_tail (struct thread *prev)
+thread_schedule_tail (struct thread *prev) //이거로 schedule()실행 후 마무리로 status 바꿔주나봄.
 {
   struct thread *cur = running_thread ();
   
@@ -560,7 +592,7 @@ static void
 schedule (void) 
 {
   struct thread *cur = running_thread ();
-  struct thread *next = next_thread_to_run ();
+  struct thread *next = next_thread_to_run (); //현재 ready list의 맨앞에 위치한 것을 잡음.
   struct thread *prev = NULL;
 
   ASSERT (intr_get_level () == INTR_OFF);

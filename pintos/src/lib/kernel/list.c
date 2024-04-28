@@ -67,7 +67,7 @@ list_init (struct list *list)
   list->tail.next = NULL;
 }
 
-/* Returns the beginning of LIST.  */
+/* Returns the beginning of LIST.  */ //begining lement를 반환함. head의 다음꺼.
 struct list_elem *
 list_begin (struct list *list)
 {
