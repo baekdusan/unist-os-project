@@ -98,13 +98,6 @@ timer_sleep (int64_t ticks)  //현재 busy wait으로 기다리고 있기 때문
   if(timer_elapsed(start) < ticks){ //이제는 when_wakeup_tick이 지나야 깨우므로 if만으로 충분.
     thread_sleep(when_wakeup_tick); //sleep list에 넣어줌.
   }
-
-  /* 기존 busy waiting part.
-//  while (timer_elapsed (start) < ticks)  //이걸 계속해서 확인해주고 있음. sleep해줘야함.
-//      //여기에 sleep list에 들어가도록 구현해야하나?
-//    thread_yield(); //thread_yeild도 여기서 실행하지만 thread.c에 구현되어있음.
-  //여기에 wakeup()을 넣으면 되나?
-   */
 }
 
 /* Sleeps for approximately MS milliseconds.  Interrupts must be

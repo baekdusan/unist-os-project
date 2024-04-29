@@ -24,7 +24,7 @@ typedef int tid_t;
 #define PRI_MIN 0                       /* Lowest priority. */
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
-#define F (1 << 14)
+#define F (1 << 14) //mlfq에서 fixed pointer에서 사용.
 
 /* A kernel thread or user process.
 

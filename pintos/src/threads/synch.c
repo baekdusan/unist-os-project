@@ -183,24 +183,13 @@ lock_acquire (struct lock *lock)
   ASSERT (!intr_context ());
   ASSERT (!lock_held_by_current_thread (lock));
   if(!thread_mlfqs){ //mlfq mode일 때는 donation을 위한 것들 필요 X.
-      if(lock -> holder != NULL){
+      if(lock -> holder != NULL){ //현재 lock을 누군가 들고있으면!
           struct thread *t = thread_current();
           t->wait_lock = lock; //현재 thread가 대기중인 lock을 설정.
-          list_insert_ordered(&lock->holder->donations, &t->d_elem, priority_large, NULL);
+          list_insert_ordered(&lock->holder->donations, &t->d_elem, priority_large, NULL); //일단 large로 넣었는데 이걸 썼는지는 기억이 안남.
           priority_donation(t);
       }
   }
-
-//  if(lock_try_acquire(lock)){ //lock을 얻을 수 있는지 check, 그리고 얻을 수 있으면 얻어버림.
-//      return;
-//  }
-//  else{ //lock을 얻을 수 없으면 현재 holder와 priority 비교 후 priority를 줌.
-//      struct thread *t = thread_current(); //현재 thread를 가져옴.
-//      t->wait_lock = lock; //현재 thread가 대기중인 lock을 설정.
-//      list_push_back (&lock->holder->donations, &t->d_elem); //multi donation해결을 위해 우선 holder에게 donate할 수 있는 thread들을 보관 //둘 다 주소로 줘야함 &사용.
-//      //이후 unlock시에 다시 donation list를 priority를 다시 설정해야하는데, list돌면서 푸는 lock을 가지고 있는 요소는 제거하고 다시 돌며 highest or origin중에 최고로 설정하면 될듯.
-//      priority_donation(t); //nested 해결을 위해 계쏙 돌아야함.
-//  }
   /*기존 코드 */
   sema_down (&lock->semaphore); //mutex down.
   lock->holder = thread_current ();
