@@ -63,7 +63,9 @@ static unsigned thread_ticks;   /* # of timer ticks since last yield. */
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.
    Controlled by kernel command-line option "-o mlfqs". */
-bool thread_mlfqs;
+bool thread_mlfqs; //이걸로 mlfq 키는 것임. 그래서 사실 if thread_mlfqs == false이렇게 사용하면 되겠네.
+int load_avg; //static으로 선언했으니까 다른 파일에서 쓰려면 getter써야하는데 어차피 getter있으니까. setter만들어주면 될듯.
+//#define PRI_MAX 63 //이런 constant들 thread.h에 있어서 그냥 사용하면 됨.
 
 static void kernel_thread (thread_func *, void *aux);
 
@@ -116,6 +118,7 @@ thread_start (void)
   struct semaphore idle_started;
   sema_init (&idle_started, 0);
   thread_create ("idle", PRI_MIN, idle, &idle_started);
+  load_avg = 0; //load_avg 초기화.
 
   /* Start preemptive thread scheduling. */
   intr_enable ();
@@ -187,7 +190,7 @@ thread_create (const char *name, int priority,
     return TID_ERROR;
 
   /* Initialize thread. */
-  init_thread (t, name, priority);
+  init_thread (t, name, priority); //여기서 init thread실행함.
   tid = t->tid = allocate_tid ();
 
   /* Stack frame for kernel_thread(). */
@@ -363,13 +366,16 @@ void check_preempt(void){ //현재 thread의 priority와 ready list맨앞과의 
 void
 thread_set_priority (int new_priority) 
 {
+    if(thread_mlfqs){ // initially false라고 되어있음.
+        return;
+    }
   thread_current ()-> original_priority = new_priority;
   //이렇게 priority를 바꾸고 나면 다시 ready list를 정렬해줘야함.
 
   reassign_priority(thread_current()); //priority재설정해줌 지금 새로 assign된걸로 priority 변경하고 donationlist에서도 다시 찾고.
-    enum intr_level old_level = intr_disable ();
-    list_sort(&ready_list, priority_large, NULL); //일단 slide에 따르면 이것만 하는데 추가로 schduling을 해줘야 하는지는 의문임.
-    intr_set_level (old_level);
+  enum intr_level old_level = intr_disable ();
+  list_sort(&ready_list, priority_large, NULL); //일단 slide에 따르면 이것만 하는데 추가로 schduling을 해줘야 하는지는 의문임.
+  intr_set_level (old_level);
   //priority_donation(thread_current()); //위에서 이미 이것도 호출해서 필요없음.
   //아 current thread의 priority가 낮아질 수도 있구나. 그러니까 이걸 check해줘야함.
   check_preempt(); // 나중에 더 써야하는 것이라 함수로 만듬.
@@ -386,32 +392,119 @@ thread_get_priority (void)
 void
 thread_set_nice (int nice UNUSED) 
 {
-  /* Not yet implemented. */
+  thread_current() -> nice = nice; //현재 thread의 nice값 set.
 }
 
 /* Returns the current thread's nice value. */
 int
 thread_get_nice (void) 
 {
-  /* Not yet implemented. */
-  return 0;
+  return thread_current() -> nice; //현재 thread의 nice값 return.
 }
 
 /* Returns 100 times the system load average. */
 int
-thread_get_load_avg (void) 
+thread_get_load_avg (void) //load_avg값은 float이다.
 {
-  /* Not yet implemented. */
-  return 0;
+    return convert_x_to_integer_rounding_zero(multiply_x_by_n(load_avg, 100)); //근데 왜 100을 곱하지??
 }
 
 /* Returns 100 times the current thread's recent_cpu value. */
 int
-thread_get_recent_cpu (void) 
+thread_get_recent_cpu (void)  //recent cpu도 float이다.
 {
-  /* Not yet implemented. */
-  return 0;
+  return convert_x_to_integer_rounding_zero(multiply_x_by_n(thread_current() -> recent_cpu, 100));
 }
+
+void mlfq_calculate_priority(struct thread *t){
+    if(t == idle_thread){
+        return;
+    }
+    //mlfq_calculate_recent_cpu(t); //일단 4tick마다는 priority가 재계산이므로 recent없이 계싼되는 것.
+    int f1 = convert_n_to_fixed_point(PRI_MAX);
+    int f2 = divide_x_by_n(t->recent_cpu, 4); //recent_cpu / 4
+    int f3 = convert_n_to_fixed_point(t->nice);
+    int f4 = multiply_x_by_n(f3, 2); //nice * 2
+    int f5 = substract_y_from_x(f1, f2);
+    int priority = substract_y_from_x(f5, f4);
+    priority = convert_x_to_integer_rounding_nearest(priority); //이거 int로 바꿔주는 것임.
+    if(priority > PRI_MAX){
+        priority = PRI_MAX;
+    }
+    else if(priority < PRI_MIN){
+        priority = PRI_MIN;
+    }
+    t -> priority = priority; //일단 다 fixed로 받았음. 근데 이러면 max min넘어감. //이거 fixed로 주니까 test 1개 남음.
+//    t -> priority = convert_n_to_fixed_point(priority);
+}
+
+void mlfq_calculate_recent_cpu(struct thread *t){ //recent cpu계산. every second마다 decay니까 factorrecent cpu 계싼시에 계싼하면 됨.
+    if(t == idle_thread){
+        return;
+    }
+     //계산시마다 load_avg를 갱신하주고 있음.
+    int f1 = multiply_x_by_y(convert_n_to_fixed_point(2), load_avg); //2*load_avg
+    int f2 = add_x_and_n(f1, 1); //2*load_avg + 1
+    int decay = divide_x_by_y(f1, f2);
+    int f3 = multiply_x_by_y(decay, t->recent_cpu); //recent_cpu는 float.
+    t->recent_cpu = add_x_and_n(f3, t->nice); //nice는 int 이것도 fix 값임.
+}
+
+void mlfq_calculate_load_avg(void){ //계산해서 float으로 돌려줌.
+//    enum intr_level old_level;
+//    old_level = intr_disable ();
+    //ready threads의 수는 ready queue에 있는 thread의 수 + 실행중인 thread(except idle)
+    int ready_threads = 0;
+    for (struct list_elem *e = list_begin(&all_list); e != list_end(&all_list); e = list_next(e)){
+        struct thread *t = list_entry(e, struct thread, allelem);
+        if(t != idle_thread && t->status == THREAD_READY){
+            ready_threads++;
+        }
+    }
+    if(thread_current() != idle_thread){
+        ready_threads++;
+    }
+    int f1 = convert_n_to_fixed_point(59);
+    int f2 = convert_n_to_fixed_point(60);
+    int f3 = divide_x_by_y(f1, f2);
+    int f4 = multiply_x_by_y(f3, load_avg); //(59/60)* load_avg
+    int f5 = divide_x_by_y(F, f2); //(1/60)
+    int f6 = convert_n_to_fixed_point(ready_threads);
+    int f7 = multiply_x_by_y(f5, f6); //(1/60)*ready_threads
+    load_avg = add_x_and_y(f4, f7); //지금은 일단 float으로 줌.
+//    intr_set_level (old_level);
+}
+
+void mlfq_increment_recent_cpu(void){ // 매 tick마다 1씩 늘려야함.
+    if(thread_current() != idle_thread){
+        thread_current()->recent_cpu = add_x_and_n(thread_current()->recent_cpu, 1); //float이니까.
+    }
+}
+
+void mlfq_recalculate_priority_all_threads(void){ // 매 4 tick마다 모든 thread의 priority재계산해야함.
+//    enum intr_level old_level;
+//    old_level = intr_disable ();
+    struct list_elem *e;
+    for(e = list_begin(&all_list); e != list_end(&all_list); e = list_next(e)){
+        struct thread *t = list_entry(e, struct thread, allelem);
+        mlfq_calculate_priority(t);
+    }
+//    intr_set_level (old_level);
+}
+
+void mlfq_recalculate_recent_cpu_priority_all_threads(void){ // 매 8tick마다 모든 thread의 recent_cpu재계산해야함.
+//    enum intr_level old_level;
+//    old_level = intr_disable ();
+    struct list_elem *e;
+    mlfq_calculate_load_avg(); //전부 계산 전에 load_avg갱신.
+    for(e = list_begin(&all_list); e != list_end(&all_list); e = list_next(e)){
+        struct thread *t = list_entry(e, struct thread, allelem);
+        mlfq_calculate_recent_cpu(t);
+        mlfq_calculate_priority(t);
+    }
+//    intr_set_level (old_level);
+}
+
 
 /* Idle thread.  Executes when no other thread is ready to run.
 
@@ -502,6 +595,10 @@ init_thread (struct thread *t, const char *name, int priority)
   t->original_priority = priority; // original_priority 초기화
   t->magic = THREAD_MAGIC;
   list_init (&t->donations); //donation list 초기화
+
+  /* 아래는 mlfq*/
+  t->nice = 0;
+  t->recent_cpu = 0;
 
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
@@ -683,4 +780,65 @@ void thread_wakeup(int64_t ticks){ //받은 ticks는 현재 system의 tick.
         }
     }
     intr_set_level(old_level);
+}
+
+
+/* mlfq를 위한 17.14 format functions들 */
+//kernel이 정수만을 reg애 저장을 할 수 있기에 integer값을 float으로 매핑할 수 있는 것을 만들었음.
+//즉, int하나의 값이 32bit이니까 이거를 1/17/14로 나누어서 맨 앞은 sign, 17은 int, 14는 소숫점 아래를 나타냄.
+//그래서 이런 규칙을 만들어놓으면 int로 저장해도 float을 얻을 수 있음.
+//#define F (1 << 14) //2^14즉, 이게 17.14 format에서는 1.0임. thread.h에 정의해놓음.
+int convert_n_to_fixed_point(int n){
+    return n * F; //그런 1이 n개.
+}
+
+int convert_x_to_integer_rounding_zero(int x){
+    return x / F; //이렇게 하면 정수만 반환되니까. 소숫점은 다 버린 것.
+}
+
+int convert_x_to_integer_rounding_nearest(int x){
+    if(x >= 0){
+        return (x + F / 2) / F; //이렇게 하면 반올림이 되는 것임.
+    }
+    else{
+        return (x - F / 2) / F; //음수일 때는 반올림이 되는 것임.
+    }
+}
+
+int add_x_and_y(int x, int y){
+    return x + y;
+}
+
+int substract_y_from_x(int x, int y){
+    return x - y;
+}
+
+int add_x_and_n(int x, int n){
+    return x + n * F;
+}
+
+int substract_n_from_x(int x, int n){
+    return x - n * F;
+}
+
+int multiply_x_by_y(int x, int y){//음..?
+    return ((int64_t) x) * y / F;
+}
+
+int multiply_x_by_n(int x, int n){
+    return x * n;
+}
+
+int divide_x_by_y(int x, int y){
+    if(y == 0){
+        return 0;
+    }
+    return ((int64_t) x) * F / y;
+}
+
+int divide_x_by_n(int x, int n){
+    if(n == 0){
+        return 0;
+    }
+    return x / n;
 }

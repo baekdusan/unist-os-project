@@ -24,6 +24,7 @@ typedef int tid_t;
 #define PRI_MIN 0                       /* Lowest priority. */
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
+#define F (1 << 14)
 
 /* A kernel thread or user process.
 
@@ -103,6 +104,9 @@ struct thread //thread structure있는 곳.
     struct lock *wait_lock; //한 thread어차피 한 lock밖에 대기 못함. 해당 lock 구조체 주소 저장.
     struct list_elem d_elem;              //donation element
     struct list donations; //multiple donation 문제를 해결하기 위한 list.
+    //mlfq시작
+    int nice;
+    int recent_cpu;
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
@@ -157,5 +161,23 @@ int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
 
 extern int64_t global_wakeup_tick; //thread.c에 추가한 전역변수.인데 이렇게 하면 timer에 연결 되려나..?
+
+int convert_n_to_fixed_point(int n);
+int convert_x_to_integer_rounding_zero(int x);
+int convert_x_to_integer_rounding_nearest(int x);
+int add_x_and_y(int x, int y);
+int substract_y_from_x(int x, int y);
+int add_x_and_n(int x, int n);
+int substract_n_from_x(int x, int n);
+int multiply_x_by_y(int x, int y);
+int multiply_x_by_n(int x, int n);
+int divide_x_by_y(int x, int y);
+int divide_x_by_n(int x, int n);
+void mlfq_calculate_priority(struct thread *t);
+void mlfq_calculate_recent_cpu(struct thread *t);
+void mlfq_calculate_load_avg(void);
+void mlfq_increment_recent_cpu(void);
+void mlfq_recalculate_priority_all_threads(void);
+void mlfq_recalculate_recent_cpu_priority_all_threads(void);
 
 #endif /* threads/thread.h */

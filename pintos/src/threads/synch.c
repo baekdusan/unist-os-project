@@ -182,12 +182,15 @@ lock_acquire (struct lock *lock)
   ASSERT (lock != NULL);
   ASSERT (!intr_context ());
   ASSERT (!lock_held_by_current_thread (lock));
-  if(lock -> holder != NULL){
-      struct thread *t = thread_current();
-      t->wait_lock = lock; //현재 thread가 대기중인 lock을 설정.
-      list_insert_ordered(&lock->holder->donations, &t->d_elem, priority_large, NULL);
-      priority_donation(t);
+  if(!thread_mlfqs){ //mlfq mode일 때는 donation을 위한 것들 필요 X.
+      if(lock -> holder != NULL){
+          struct thread *t = thread_current();
+          t->wait_lock = lock; //현재 thread가 대기중인 lock을 설정.
+          list_insert_ordered(&lock->holder->donations, &t->d_elem, priority_large, NULL);
+          priority_donation(t);
+      }
   }
+
 //  if(lock_try_acquire(lock)){ //lock을 얻을 수 있는지 check, 그리고 얻을 수 있으면 얻어버림.
 //      return;
 //  }
@@ -257,19 +260,20 @@ lock_release (struct lock *lock)
   struct thread *cur = thread_current();
   struct list_elem *e = list_begin(&cur->donations);
   struct list_elem *next;
-
-  //이렇게 해서 donation list의 현재 해제하려는 lock의 d_elem을 모두 제거.
-  if(!list_empty(&cur->donations)){
-      while(e != list_end(&cur->donations)){
-          next = list_next(e);
-          struct thread *t = list_entry(e, struct thread, d_elem);
-          if(t->wait_lock == lock){
-              list_remove(e);
+  if(!thread_mlfqs){ //mlfq일 때는 donation하는 것들 필요 X.
+      //이렇게 해서 donation list의 현재 해제하려는 lock의 d_elem을 모두 제거.
+      if(!list_empty(&cur->donations)){
+          while(e != list_end(&cur->donations)){
+              next = list_next(e);
+              struct thread *t = list_entry(e, struct thread, d_elem);
+              if(t->wait_lock == lock){
+                  list_remove(e);
+              }
+              e = next;
           }
-          e = next;
       }
+      reassign_priority(cur); //priority를 donation list에서 다시 돌면서 재 assign 해야함.
   }
-  reassign_priority(cur); //priority를 donation list에서 다시 돌면서 재 assign 해야함.
   lock->holder = NULL;
   sema_up (&lock->semaphore);
 }
