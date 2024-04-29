@@ -326,9 +326,7 @@ thread_yield (void)  //여기 thread_yield
   ASSERT (!intr_context ());
 
   old_level = intr_disable (); //아마 현재 interrupt level을 반환하는 것 같음. //disable the interrupt and return previous interrupt state
-//  if (cur != idle_thread)  //지금이 idle thread가 아니라면,
-//      list_insert_ordered(&ready_list, &cur->elem, priority_large, NULL); //ready list에 order에 맞게 넣음.
-    list_insert_ordered(&ready_list, &cur->elem, priority_large, NULL); //이렇게 안하면 idle도 재실행이 안될 것 같아서 위랑 둘 중에 뭐가 맞는지 모르겠음.
+  list_insert_ordered(&ready_list, &cur->elem, priority_large, NULL); //이렇게 안하면 idle도 재실행이 안될 것 같아서 위랑 둘 중에 뭐가 맞는지 모르겠음.
   cur->status = THREAD_READY;
   schedule ();                  //context switch
   intr_set_level (old_level); //interupt state 되돌리기 //set a state of interrupt to the state passed to parameter and return previous interrupt state
@@ -376,7 +374,7 @@ thread_set_priority (int new_priority)
   enum intr_level old_level = intr_disable ();
   list_sort(&ready_list, priority_large, NULL); //일단 slide에 따르면 이것만 하는데 추가로 schduling을 해줘야 하는지는 의문임.
   intr_set_level (old_level);
-  //priority_donation(thread_current()); //위에서 이미 이것도 호출해서 필요없음.
+  //priority_donation(thread_current()); //reassign에서 이미 이것도 호출해서 필요없음.
   //아 current thread의 priority가 낮아질 수도 있구나. 그러니까 이걸 check해줘야함.
   check_preempt(); // 나중에 더 써야하는 것이라 함수로 만듬.
 }
@@ -390,90 +388,100 @@ thread_get_priority (void)
 
 /* Sets the current thread's nice value to NICE. */
 void
-thread_set_nice (int nice UNUSED) 
+thread_set_nice (int nice)
 {
-  thread_current() -> nice = nice; //현재 thread의 nice값 set.
+    enum intr_level old_level;
+    old_level = intr_disable ();
+    thread_current() -> nice = nice;
+    intr_set_level (old_level);
 }
 
 /* Returns the current thread's nice value. */
 int
 thread_get_nice (void) 
 {
-  return thread_current() -> nice; //현재 thread의 nice값 return.
+    enum intr_level old_level;
+    old_level = intr_disable ();
+    int result = thread_current() -> nice; //이렇게 해야 int로 바꿔줌.
+    intr_set_level (old_level);
+    return result;
 }
 
 /* Returns 100 times the system load average. */
 int
 thread_get_load_avg (void) //load_avg값은 float이다.
 {
-    return convert_x_to_integer_rounding_zero(multiply_x_by_n(load_avg, 100)); //근데 왜 100을 곱하지??
+    enum intr_level old_level;
+    old_level = intr_disable ();
+    int result = convert_x_to_integer_rounding_zero(multiply_x_by_n(load_avg, 100)); //이렇게 해야 int로 바꿔줌.
+    intr_set_level (old_level);
+    return result;
 }
 
 /* Returns 100 times the current thread's recent_cpu value. */
 int
 thread_get_recent_cpu (void)  //recent cpu도 float이다.
 {
-  return convert_x_to_integer_rounding_zero(multiply_x_by_n(thread_current() -> recent_cpu, 100));
+    enum intr_level old_level;
+    old_level = intr_disable ();
+    int result = convert_x_to_integer_rounding_zero(multiply_x_by_n(thread_current() -> recent_cpu, 100)); //이렇게 해야 int로 바꿔줌.
+    intr_set_level (old_level);
+    return result;
 }
 
-void mlfq_calculate_priority(struct thread *t){
+void mlfq_calculate_priority(struct thread *t){ //thread 받아서 해당 thread priority 재계산.
     if(t == idle_thread){
         return;
     }
-    //mlfq_calculate_recent_cpu(t); //일단 4tick마다는 priority가 재계산이므로 recent없이 계싼되는 것.
-    int f1 = convert_n_to_fixed_point(PRI_MAX);
-    int f2 = divide_x_by_n(t->recent_cpu, 4); //recent_cpu / 4
-    int f3 = convert_n_to_fixed_point(t->nice);
-    int f4 = multiply_x_by_n(f3, 2); //nice * 2
-    int f5 = substract_y_from_x(f1, f2);
-    int priority = substract_y_from_x(f5, f4);
-    priority = convert_x_to_integer_rounding_nearest(priority); //이거 int로 바꿔주는 것임.
+    int f1 = convert_n_to_fixed_point(PRI_MAX); //왜 이게 차이나지??
+    int f2 = divide_x_by_n(t->recent_cpu, 4);
+    int f3 = convert_n_to_fixed_point(t->nice * 2);
+    int priority = f1 - f2 - f3;
+    priority = convert_x_to_integer_rounding_zero(priority); //이거 int로 바꿔주는 것임.
     if(priority > PRI_MAX){
         priority = PRI_MAX;
     }
     else if(priority < PRI_MIN){
         priority = PRI_MIN;
     }
-    t -> priority = priority; //일단 다 fixed로 받았음. 근데 이러면 max min넘어감. //이거 fixed로 주니까 test 1개 남음.
-//    t -> priority = convert_n_to_fixed_point(priority);
+    t -> priority = priority;
 }
 
-void mlfq_calculate_recent_cpu(struct thread *t){ //recent cpu계산. every second마다 decay니까 factorrecent cpu 계싼시에 계싼하면 됨.
+void mlfq_calculate_recent_cpu(struct thread *t){ //recent cpu계산. every second마다 decay니까 factor recent cpu 계싼시에 계싼하면 됨.
     if(t == idle_thread){
         return;
     }
-     //계산시마다 load_avg를 갱신하주고 있음.
-    int f1 = multiply_x_by_y(convert_n_to_fixed_point(2), load_avg); //2*load_avg
-    int f2 = add_x_and_n(f1, 1); //2*load_avg + 1
+    int f1 = multiply_x_by_n(load_avg, 2);
+    int f2 = add_x_and_n(f1, 1);
     int decay = divide_x_by_y(f1, f2);
-    int f3 = multiply_x_by_y(decay, t->recent_cpu); //recent_cpu는 float.
-    t->recent_cpu = add_x_and_n(f3, t->nice); //nice는 int 이것도 fix 값임.
+    t->recent_cpu = add_x_and_n(multiply_x_by_y(decay, t->recent_cpu), t->nice);
 }
 
-void mlfq_calculate_load_avg(void){ //계산해서 float으로 돌려줌.
-//    enum intr_level old_level;
-//    old_level = intr_disable ();
-    //ready threads의 수는 ready queue에 있는 thread의 수 + 실행중인 thread(except idle)
-    int ready_threads = 0;
-    for (struct list_elem *e = list_begin(&all_list); e != list_end(&all_list); e = list_next(e)){
+
+void mlfq_calculate_load_avg(void){ //현재 load_avg갱신.
+    enum intr_level old_level;
+    old_level = intr_disable ();
+    int ready_threads = 0;//ready threads의 수는 ready queue에 있는 thread의 수 + 실행중인 thread(except idle)
+    for (struct list_elem *e = list_begin(&ready_list); e != list_end(&ready_list); e = list_next(e)){
         struct thread *t = list_entry(e, struct thread, allelem);
-        if(t != idle_thread && t->status == THREAD_READY){
+        if(t != idle_thread){
             ready_threads++;
         }
     }
     if(thread_current() != idle_thread){
         ready_threads++;
     }
-    int f1 = convert_n_to_fixed_point(59);
-    int f2 = convert_n_to_fixed_point(60);
-    int f3 = divide_x_by_y(f1, f2);
-    int f4 = multiply_x_by_y(f3, load_avg); //(59/60)* load_avg
-    int f5 = divide_x_by_y(F, f2); //(1/60)
-    int f6 = convert_n_to_fixed_point(ready_threads);
-    int f7 = multiply_x_by_y(f5, f6); //(1/60)*ready_threads
-    load_avg = add_x_and_y(f4, f7); //지금은 일단 float으로 줌.
-//    intr_set_level (old_level);
+    int f0 = convert_n_to_fixed_point(59);
+    int f01 = convert_n_to_fixed_point(60);
+    int f1 = divide_x_by_y(f0, f01);
+    int f2 = divide_x_by_n(convert_n_to_fixed_point(1), 60);
+    int f3 = multiply_x_by_y(f1, load_avg);
+    f3 = multiply_x_by_n(divide_x_by_y(f3, convert_n_to_fixed_point(1)),1);
+    int f4 = multiply_x_by_y(f2, convert_n_to_fixed_point(ready_threads));
+    load_avg = add_x_and_y(f3, f4);
+    intr_set_level (old_level);
 }
+
 
 void mlfq_increment_recent_cpu(void){ // 매 tick마다 1씩 늘려야함.
     if(thread_current() != idle_thread){
@@ -482,19 +490,16 @@ void mlfq_increment_recent_cpu(void){ // 매 tick마다 1씩 늘려야함.
 }
 
 void mlfq_recalculate_priority_all_threads(void){ // 매 4 tick마다 모든 thread의 priority재계산해야함.
-//    enum intr_level old_level;
-//    old_level = intr_disable ();
     struct list_elem *e;
     for(e = list_begin(&all_list); e != list_end(&all_list); e = list_next(e)){
         struct thread *t = list_entry(e, struct thread, allelem);
         mlfq_calculate_priority(t);
     }
-//    intr_set_level (old_level);
 }
 
-void mlfq_recalculate_recent_cpu_priority_all_threads(void){ // 매 8tick마다 모든 thread의 recent_cpu재계산해야함.
-//    enum intr_level old_level;
-//    old_level = intr_disable ();
+void mlfq_recalculate_recent_cpu_priority_all_threads(void){ // 매 1sec 마다 모든 thread의 recent_cpu재계산해야함.
+    enum intr_level old_level;
+    old_level = intr_disable ();
     struct list_elem *e;
     mlfq_calculate_load_avg(); //전부 계산 전에 load_avg갱신.
     for(e = list_begin(&all_list); e != list_end(&all_list); e = list_next(e)){
@@ -502,7 +507,7 @@ void mlfq_recalculate_recent_cpu_priority_all_threads(void){ // 매 8tick마다 
         mlfq_calculate_recent_cpu(t);
         mlfq_calculate_priority(t);
     }
-//    intr_set_level (old_level);
+    intr_set_level (old_level);
 }
 
 
@@ -821,11 +826,11 @@ int substract_n_from_x(int x, int n){
     return x - n * F;
 }
 
-int multiply_x_by_y(int x, int y){//음..?
+int multiply_x_by_y(int x, int y){ // F *F하는거니까 F로 나눠야지
     return ((int64_t) x) * y / F;
 }
 
-int multiply_x_by_n(int x, int n){
+int multiply_x_by_n(int x, int n){ //F가 그냥 몇 배 되는거니까 맞는거고.
     return x * n;
 }
 

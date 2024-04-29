@@ -182,13 +182,10 @@ static void
 timer_interrupt (struct intr_frame *args UNUSED) // 매 tick마다 실행이 되네 timer interrupt handler니까. 여기에서 sleep list에서 깨어나야 할 thread가 있는지를 check하고 있으면 wake up function call하기.
 {
   ticks++;
-  thread_tick (); //update the cpu usage for running process // CPU 잘 쓰고있는지 나중에 statistic을 위한 것 아닐까?
-
   if(thread_mlfqs){ //mlfq 실행시.
     mlfq_increment_recent_cpu(); //현재 실행중인 thread recent_cpu를 1 증가.
     if(ticks % TIMER_FREQ == 0){ // timer_freq가 timer.h에 정의되어있음. 1초마다는 recent_cpu업데이트하고 priority 재계싼.
-        mlfq_recalculate_recent_cpu_priority_all_threads(); //모든 thread에 대해서 recent cpu재계싼.
-      //mlfq_recalculate_priority_all_threads(); //모든 thread의에 대해서 priority 재계싼.
+        mlfq_recalculate_recent_cpu_priority_all_threads(); //모든 thread에 대해서 recent cpu, proprity 재계산.
     }
     else if(ticks % 4 == 0){ //4 tick마다 실행.
         mlfq_recalculate_priority_all_threads(); //모든 thread에 대해서 proprity 재계산.
@@ -197,6 +194,7 @@ timer_interrupt (struct intr_frame *args UNUSED) // 매 tick마다 실행이 되
   if(global_wakeup_tick <= ticks){ // global_wakeup_tick보다 현재 ticks가 같거나 커지면 꺠워줘야할 thread존재.
       thread_wakeup(ticks); //sleep list에서 깨워줌.
   }
+  thread_tick (); //update the cpu usage for running process // CPU 잘 쓰고있는지 나중에 statistic을 위한 것 아닐까?
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer
