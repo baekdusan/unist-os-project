@@ -8,23 +8,23 @@
 
 /* States in a thread's life cycle. */
 enum thread_status
-  {
-    THREAD_RUNNING,     /* Running thread. */
-    THREAD_READY,       /* Not running but ready to run. */
-    THREAD_BLOCKED,     /* Waiting for an event to trigger. */
-    THREAD_DYING        /* About to be destroyed. */
-  };
+{
+   THREAD_RUNNING, /* Running thread. */
+   THREAD_READY,   /* Not running but ready to run. */
+   THREAD_BLOCKED, /* Waiting for an event to trigger. */
+   THREAD_DYING    /* About to be destroyed. */
+};
 
 /* Thread identifier type.
    You can redefine this to whatever type you like. */
 typedef int tid_t;
-#define TID_ERROR ((tid_t) -1)          /* Error value for tid_t. */
+#define TID_ERROR ((tid_t)-1) /* Error value for tid_t. */
 
 /* Thread priorities. */
-#define PRI_MIN 0                       /* Lowest priority. */
-#define PRI_DEFAULT 31                  /* Default priority. */
-#define PRI_MAX 63                      /* Highest priority. */
-#define F (1 << 14) //mlfq에서 fixed pointer에서 사용.
+#define PRI_MIN 0      /* Lowest priority. */
+#define PRI_DEFAULT 31 /* Default priority. */
+#define PRI_MAX 63     /* Highest priority. */
+#define F (1 << 14)    // mlfq에서 fixed pointer에서 사용.
 
 /* A kernel thread or user process.
 
@@ -82,85 +82,91 @@ typedef int tid_t;
    only because they are mutually exclusive: only a thread in the
    ready state is on the run queue, whereas only a thread in the
    blocked state is on a semaphore wait list. */
-struct thread //thread structure있는 곳.
-  {
-    /* Owned by thread.c. */
-    tid_t tid;                          /* Thread identifier. */
-    enum thread_status status;          /* Thread state. */
-    char name[16];                      /* Name (for debugging purposes). */
-    uint8_t *stack;                     /* Saved stack pointer. */
-    int priority;                       /* Priority. */
-    int original_priority;              // priority donation 되었을 때, realse하면 restore에 필요한 것.
-    // 전역 allelem에 들어갈 double linked list의 구성요소.
-    struct list_elem allelem;           /* List element for all threads list. */
+struct thread // thread structure있는 곳.
+{
+   /* Owned by thread.c. */
+   tid_t tid;                 /* Thread identifier. */
+   enum thread_status status; /* Thread state. */
+   char name[16];             /* Name (for debugging purposes). */
+   uint8_t *stack;            /* Saved stack pointer. */
+   int priority;              /* Priority. */
+   // 전역 allelem에 들어갈 double linked list의 구성요소.
+   struct list_elem allelem; /* List element for all threads list. */
 
-    /* Shared between thread.c and synch.c. */
-    //나중에 lock같은거 얻을 때 기다리는 thread이런거 저장할 때 쓰나봄.
-    //특정 list에 쓰도록 두는 double linked list 요소? thread_yeild 함수에도 쓰임
-    //그런걸 보니까 더더욱이 맞는듯.
-    struct list_elem elem;              /* List element. */
+   /* Shared between thread.c and synch.c. */
+   // 나중에 lock같은거 얻을 때 기다리는 thread이런거 저장할 때 쓰나봄.
+   // 특정 list에 쓰도록 두는 double linked list 요소? thread_yeild 함수에도 쓰임
+   // 그런걸 보니까 더더욱이 맞는듯.
+   struct list_elem elem; /* List element. */
 
-    int64_t tick_wakeup; //local tick thread가 sleep일 때, 일어나야 하는 tick저장.
-    struct lock *wait_lock; //한 thread어차피 한 lock밖에 대기 못함. 해당 lock 구조체 주소 저장.
-    struct list_elem d_elem;              //donation element
-    struct list donations; //multiple donation 문제를 해결하기 위한 list.
-    //mlfq시작
-    int nice;
-    int recent_cpu;
+   /*Alarm Clock 때 추가 */
+
+   int64_t tick_wakeup; // local tick thread가 sleep일 때, 일어나야 하는 tick저장.
+
+   /* Priority 때 추가 */
+
+   int original_priority; // priority donation 되었을 때, release하면 restore에 필요한 것.
+
+   struct lock *wait_lock;  // 한 thread어차피 한 lock밖에 대기 못함. 해당 lock 구조체 주소 저장.
+   struct list_elem d_elem; // donation element
+   struct list donations;   // multiple donation 문제를 해결하기 위한 list.
+
+   /* mlfq 때 추가 */
+   int nice;
+   int recent_cpu;
 
 #ifdef USERPROG
-    /* Owned by userprog/process.c. */
-    uint32_t *pagedir;                  /* Page directory. */
+   /* Owned by userprog/process.c. */
+   uint32_t *pagedir; /* Page directory. */
 #endif
 
-    /* Owned by thread.c. */
-    unsigned magic;                     /* Detects stack overflow. */
-
-  };
+   /* Owned by thread.c. */
+   unsigned magic; /* Detects stack overflow. */
+};
 
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.
    Controlled by kernel command-line option "-o mlfqs". */
 extern bool thread_mlfqs;
 
-void thread_init (void);
-void thread_start (void);
+void thread_init(void);
+void thread_start(void);
 
-void thread_tick (void);
-void thread_print_stats (void);
+void thread_tick(void);
+void thread_print_stats(void);
 
-typedef void thread_func (void *aux);
-tid_t thread_create (const char *name, int priority, thread_func *, void *);
+typedef void thread_func(void *aux);
+tid_t thread_create(const char *name, int priority, thread_func *, void *);
 
-void thread_block (void);
-void thread_unblock (struct thread *);
+void thread_block(void);
+void thread_unblock(struct thread *);
 
-struct thread *thread_current (void);
-tid_t thread_tid (void);
-const char *thread_name (void);
+struct thread *thread_current(void);
+tid_t thread_tid(void);
+const char *thread_name(void);
 
-void thread_exit (void) NO_RETURN;
-void thread_yield (void);
+void thread_exit(void) NO_RETURN;
+void thread_yield(void);
 void check_preempt(void);
 
 bool priority_large(const struct list_elem *a, const struct list_elem *b, void *aux);
-bool tick_less (const struct list_elem *a, const struct list_elem *b, void *aux); // 이거 구현했음.
-void thread_sleep(int64_t ticks); //thread.c에 추가한 함수.
-void thread_wakeup(int64_t ticks); //thread.c에 추가한 함수. ticks보다 작거나 같은거 다 ready로 옮김.
+bool tick_less(const struct list_elem *a, const struct list_elem *b, void *aux); // 이거 구현했음.
+void thread_sleep(int64_t ticks);                                                // thread.c에 추가한 함수.
+void thread_wakeup(int64_t ticks);                                               // thread.c에 추가한 함수. ticks보다 작거나 같은거 다 ready로 옮김.
 
 /* Performs some operation on thread t, given auxiliary data AUX. */
-typedef void thread_action_func (struct thread *t, void *aux);
-void thread_foreach (thread_action_func *, void *);
+typedef void thread_action_func(struct thread *t, void *aux);
+void thread_foreach(thread_action_func *, void *);
 
-int thread_get_priority (void);
-void thread_set_priority (int);
+int thread_get_priority(void);
+void thread_set_priority(int);
 
-int thread_get_nice (void);
-void thread_set_nice (int);
-int thread_get_recent_cpu (void);
-int thread_get_load_avg (void);
+int thread_get_nice(void);
+void thread_set_nice(int);
+int thread_get_recent_cpu(void);
+int thread_get_load_avg(void);
 
-extern int64_t global_wakeup_tick; //thread.c에 추가한 전역변수.인데 이렇게 하면 timer에 연결 되려나..?
+extern int64_t global_wakeup_tick; // thread.c에 추가한 전역변수.인데 이렇게 하면 timer에 연결 되려나..?
 
 int convert_n_to_fixed_point(int n);
 int convert_x_to_integer_rounding_zero(int x);
