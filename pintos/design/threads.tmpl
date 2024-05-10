@@ -74,7 +74,7 @@ The 'global_wakeup_tick' variable quickly identifies whether any threads should 
 Keeping the 'global_wakeup_tick' updated when threads sleep is an O(1) complexity operation,
 whereas not doing so could lead to O(n) complexity. This ensures optimal performance.
 The 'sleep_list' is sorted, so waking threads iterates sequentially until finding the first threads
-whos wakeup time exceeds the global tick count.
+whose wakeup time exceeds the global tick count.
 
 ---- SYNCHRONIZATION ----
 
@@ -117,7 +117,7 @@ struct thread {
   ...
 }
 original_priority: Stores the thread's original priority before donation.
-wait_lock: The lock the thread is currently waiting for.
+wait_lock: The lock that thread is currently waiting for.
 d_elem: List element for donation purposes.
 donations: List for managing multiple priority donations.
 
@@ -245,6 +245,12 @@ it may lead to a decrease in performance.
 >> disadvantages in your design choices.  If you were to have extra
 >> time to work on this part of the project, how might you choose to
 >> refine or improve your design?
+
+The advantage of this system is that it can approximate SRTF scheduling,
+which is optimal for reducing average response time.
+Currently, it is implemented with a single queue.
+However, using multiple queues could potentially increase efficiency.
+Therefore, if time allows, I plan to implement additional queues to enhance performance.
 
 >> C6: The assignment explains arithmetic for fixed-point math in
 >> detail, but it leaves it open to you to implement it.  Why did you
