@@ -29,7 +29,6 @@ Context switching: https://www.youtube.com/watch?v=mtX-bj1Fu6M
 Online References:
 
 https://one-step-a-day.tistory.com/126
-https://poalim.tistory.com/28
 
 
                  ALARM CLOCK
@@ -53,6 +52,7 @@ static struct list sleep_list;
 
 int64_t global_wakeup_tick = INT64_MAX;
 : Global variable to store the earliest wakeup time to avoid excessive computations by the timer interrupt handler.
+
 ---- ALGORITHMS ----
 
 >> A2: Briefly describe what happens in a call to timer_sleep(),
@@ -71,7 +71,7 @@ The threads are moved to the ready_list using thread_unblock().
 >> the timer interrupt handler?
 
 The 'global_wakeup_tick' variable quickly identifies whether any threads should be woken up.
-Keeping the 'global_wakeup_tick' updated when threads sleep is an O(1) complexity operation,
+Keeping the 'global_wakeup_tick' updated whenever threads sleep is an O(1) complexity operation,
 whereas not doing so could lead to O(n) complexity. This ensures optimal performance.
 The 'sleep_list' is sorted, so waking threads iterates sequentially until finding the first threads
 whose wakeup time exceeds the global tick count.
@@ -83,10 +83,12 @@ whose wakeup time exceeds the global tick count.
 
 Use 'intr_disable()' when entering critical sections during 'timer_sleep()',
 and enable interrupts by 'intr_set_level()'.
+During this time, all the other threads except first coming thread must wait.
 
 >> A5: How are race conditions avoided when a timer interrupt occurs
 >> during a call to timer_sleep()?
 
+It has quite similar answer with the answer to above question (A4).
 Interrupts are disabled during 'timer_sleep()',
 preventing the timer interrupt handler from running simultaneously.
 
@@ -124,6 +126,20 @@ donations: List for managing multiple priority donations.
 >> B2: Explain the data structure used to track priority donation.
 >> Use ASCII art to diagram a nested donation.  (Alternately, submit a
 >> .png file.)
+
+Threads:   T1   T2   T3
+Resource:  L1   L2   L1
+Request:        L1   L2   
+priority:   1    2    3
+
+You can see the png file that desribes the scenario in above case.
+T2 donates its priority to T1, and T3 donates its priority to T2 and T1 continuously.
+T1 finishes its job and releases L1 and get back to its priority 1.
+T2 acquires L1, finishes its job and releases L1 and L2, and get back to its priority 2.
+T3 acquires L2, finishes its job and releases L2.
+
+
+
 
 ---- ALGORITHMS ----
 
@@ -260,8 +276,11 @@ Therefore, if time allows, I plan to implement additional queues to enhance perf
 >> numbers, why did you do so?  If not, why not?
 
 Floating point operations degrade kernel performance because they involve complex operations.
-For pintos, which do not support floating point arithmetic, you must implement floating point arithmetic yourself.
-We implemented floating-point operations through bitwise operations with the first bit as the sign, 17 bits as the integer part, and 14 bits as the decimal part in 32 bits.
+For pintos, which do not support floating point arithmetic, we had to implement floating point arithmetic ourself.
+We implemented floating-point operations (fpo) through bitwise operations
+with the first bit as the sign, 17 bits as the integer part, and 14 bits as the decimal part in 32 bits.
+Overall cases when we use fpo we try to reduce number of calculations because it might have some overheads,
+and consider the order of calculation like division after multiplication to reduce the error rate.
 
                SURVEY QUESTIONS
                ================
