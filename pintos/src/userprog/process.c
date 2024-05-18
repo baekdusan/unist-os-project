@@ -26,7 +26,7 @@ static bool load (const char *cmdline, void (**eip) (void), void **esp);
    before process_execute() returns.  Returns the new process's
    thread id, or TID_ERROR if the thread cannot be created. */
 tid_t
-process_execute (const char *file_name) 
+process_execute (const char *file_name) //argument passing 이 함수 고치기
 {
   char *fn_copy;
   tid_t tid;
@@ -36,44 +36,126 @@ process_execute (const char *file_name)
   fn_copy = palloc_get_page (0);
   if (fn_copy == NULL)
     return TID_ERROR;
-  strlcpy (fn_copy, file_name, PGSIZE);
-
+  strlcpy (fn_copy, file_name, PGSIZE); //문자열 복사 filename을 fn_copy로 복사함.
+  //argv,argc를 넘기는 것 때문에 start_process에서 parsing을 하려고 햇는데 그렇게 하면 여기 새로운 thread의 이름이 이상해짐. file이름이 아니게됨.
+  char *delim = " ";  // 구분자는 공백, 쉼표, 점
+  char *saveptr;
+  file_name = strtok_r(file_name, delim, &saveptr); //file_name 에서 가장 첫번쨰 토큰을 뽑아냄. 추후 therad name으로 사용.
+  //위 strtok_r에 주소 넣으면 그 주소 내용 변경된다. 그래서 file_name을 넣어줌.
+  printf("first token file_name: %s\n", file_name);
   /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
+  //현재 구현의 문제점은 command line을 parse하지 않고 그대로 넘겨준다는 것임.
+  tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy); // 새로운 프로그램 실행할 쓰레드 만듬.
+  //그리고 새롭게 만들어진 쓰레드가 start_process를 우선 실행하게 하네. start process는 load하고 원하는 프로그램 실행하게 하는 function.
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy); 
   return tid;
 }
 
 /* A thread function that loads a user process and starts it
-   running. */
+   running. */ //interrupt frame을
 static void
-start_process (void *file_name_)
+start_process (void *file_name_) //argument passing 이 함수 고치기
 {
-  char *file_name = file_name_;
-  struct intr_frame if_;
+  char *file_name = file_name_; //comand line임.
+  struct intr_frame if_; //interrupt frame선언. kernel space에 있는 user param을 저장하는 stack임.
   bool success;
+  ///argument parsing부분 구현 argv와 argc를 strtok_r을 이요해서 구현
+  char *token, *save_ptr;
+  char *argv[128]; //document에 따르면, kernel에 pass하는데에 128byte limit이 있다고 함.
+  int argc = 0; //strtok_r은 문자열을 받아서 해당 문자열을 기준대로 나눠서 나눈 문자열의 시작 포인터를 반환해줌. 그래서 원본 문자열 free되면 접근이 안됨.
+  //아 동작방식이 원본 문자열에서 기준으로 받은 것들을 다 \0으로 바꾸는 것이 동작 방식이라고 함.
+  for(token = strtok_r(file_name, " ", &save_ptr); token != NULL; token = strtok_r(NULL, " ", &save_ptr)){
+      argv[argc] = token;
+      argc++;
+  }
+  //그래서 이 과정이 끝나면 argv에는 각 argument의 '시작 주소'가 들어가게 된다.
+  ///
 
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
-  success = load (file_name, &if_.eip, &if_.esp);
+  //기존 file_name대신 argv[0]을 넣어줘서 실행할 프로그램의 이름을 넣음. 이로써 load는 이 파일을 executable을 찾아서 mem에 load한다.
+  success = load (argv[0], &if_.eip, &if_.esp);  //disk에 있는 binary file을 mem에 올린다.
+  //pintos에서는 load함수가 file name을 받아서 해당 file을 disk에서 mem으로 옮기고, 실행되어야 할 instruction을 eip에 저장한다.
+  //그리고 user stack의 top을 esp에 저장해준다.
+  //if_.esp는 address of the top of the user stack. eip는 location of instruction.
+  //user stack init해주고 esp, eip 설정해준다.
 
-  /* If load failed, quit. */
-  palloc_free_page (file_name);
-  if (!success) 
+  if (!success){
+    palloc_free_page (file_name);
     thread_exit ();
+  }
 
+//  /* If load failed, quit. */ ///이 부분 argv를 포인터 배열로 하면 free page를 하기 때문에 받아오지를 못함. 그래서 변경해야함.
+//  palloc_free_page (file_name);
+//  if (!success)
+//    thread_exit ();
+  /* 이 부분에 stack을 setup하는 부분을 구현해야 한다*/
+  //user stack을 initalize하고 argument를 stack에 push하는 부분을 구현하면 됨.
+  //user program을 실행할 때, 우리는 argument를 pass 해줘야 한다. 이 부분을 구현해주면 된다.
+  //즉, 이 부분에 stack을 setup하는 함수를 넣으면 됨. 이렇게 넣으면 user mode로 돌아갔을 때 stack 으로부터 pop을 통해 argument를 가져간다.
+    //if_.esp가 user stack의 top을 가리키고 있따.
+  argument_stack(argv, argc, &if_.esp); //esp pointer의 pointer를 넣음.
+  hex_dump(if_.esp, if_.esp, PHYS_BASE - if_.esp, true); //stack의 내용을 출력해준다.
+  palloc_free_page (file_name);
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
      threads/intr-stubs.S).  Because intr_exit takes all of its
      arguments on the stack in the form of a `struct intr_frame',
      we just point the stack pointer (%esp) to our stack frame
      and jump to it. */
-  asm volatile ("movl %0, %%esp; jmp intr_exit" : : "g" (&if_) : "memory");
+  asm volatile ("movl %0, %%esp; jmp intr_exit" : : "g" (&if_) : "memory"); //intr_exit을 실행하여 user program으로 넘어간다.
   NOT_REACHED ();
+}
+
+void argument_stack(char *argv[], int argc, void **esp){
+  size_t len;
+  int arg_bytes = 0;
+  char *argv_addr[argc]; //argument를 넣어준 이후에는 각 argument가 저장된 주소를 넣어줘야해서 이거 유지해야함.
+  //user stack에 argument를 넣음.
+  for(int i = argc -1; i >= 0; i--){
+    len = strlen(argv[i]) + 1; // '/0'을 넣어줘야 하니까. +1해서 넣어줌
+    arg_bytes += len;
+    *esp -= len; //stack은 높은 주소에서 내려가니까.
+    memcpy(*esp, argv[i], len); //argument를 stack에 넣어줌.
+    //argv[i]는 해당 argument의 시작주소이다. 그래서 memcpy로 해당 시작주소가 가르키는 값에서 len만큼을 복사해줌. 그럼 tok으로 나눌 때 \0들어가있으니까 len+1로하면 그것까지 됨.
+    //그래서 이제는 file name이 free되어도 상관 없음.
+    argv_addr[i] = *esp; //argument의 주소를 저장해줌.
+  }
+  //convention에 이 argument가 4byte에 align되어 있어야 한다고 함. 0으로 align해줌.
+  while(arg_bytes % 4 != 0){
+    *esp -= 1;
+    *((uint8_t*)*esp) = 0; //Esp는 esp의 pointer의 pointer임. 그래서 *로 한번 참조하면 esp가 됨. 그걸 uint8_t로 형변환함. 1byte를 넣기 위해서.
+    //그래서 *로 한번 더 해당 주소를 참조하면 esp의 값인거니까 거기를 0으로 넣어주면 됨.
+    arg_bytes++;
+  }
+//  uint32_t padding = 4 - ((uintptr_t)*esp % 4); //argument byte기준인지 esp기준인지 잘 모르겠음
+//  while(padding != 0){
+//    *esp -= 1;
+//    *((uint8_t*)*esp) = 0; //1byte넣기.
+//    padding--;
+//  }
+  //Null terminate string을 넣어서 argument다 넣은거 표시
+  *esp -= sizeof(char*); //4byte
+  *((char**)*esp) = 0; //char*로 넣도록 하기 위해 이렇게 해줌.
+  //argument의 주소를 넣어줌.
+  for(int i = argc -1; i >= 0; i--){
+    *esp -= sizeof(char*);
+    *((char**)*esp) = argv_addr[i];
+  }
+  //argv의 주소를 넣어줌.
+  char **argv_start = (char**)*esp;
+  *esp -= sizeof(char**); //type이 char**임.
+  *((char***)*esp) = argv_start;
+  //argc를 넣어줌.
+  *esp -= sizeof(int);
+  *((int*)*esp) = argc;
+  //return address를 넣어줌.
+  *esp -= sizeof(void*);
+  *((void**)*esp) = 0;
 }
 
 /* Waits for thread TID to die and returns its exit status.  If
@@ -202,8 +284,8 @@ static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
                           bool writable);
 
 /* Loads an ELF executable from FILE_NAME into the current thread.
-   Stores the executable's entry point into *EIP
-   and its initial stack pointer into *ESP.
+   Stores the executable's entry point into *EIP //executable에 들어가는 주소구나 starting entry point of function이라고 설명해줌.
+   and its initial stack pointer into *ESP. //stack top of user stack이라고 설명해줌.
    Returns true if successful, false otherwise. */
 bool
 load (const char *file_name, void (**eip) (void), void **esp) 
@@ -216,10 +298,10 @@ load (const char *file_name, void (**eip) (void), void **esp)
   int i;
 
   /* Allocate and activate page directory. */
-  t->pagedir = pagedir_create ();
+  t->pagedir = pagedir_create (); //page directory 만듬. Pagetable로의 pointer라고 함.
   if (t->pagedir == NULL) 
     goto done;
-  process_activate ();
+  process_activate (); //set cr3 register라는데 cr3 register가 뭔지 모르겠음.
 
   /* Open executable file. */
   file = filesys_open (file_name);
@@ -230,6 +312,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
     }
 
   /* Read and verify executable header. */
+  //elf file을 parse하고 ELF header를 얻음. header에 다른 segment들 어디있고 이런 정보가 있음.
   if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
       || memcmp (ehdr.e_ident, "\177ELF\1\1\1", 7)
       || ehdr.e_type != 2
@@ -242,7 +325,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
       goto done; 
     }
 
-  /* Read program headers. */
+  /* Read program headers. */ //load segment info
   file_ofs = ehdr.e_phoff;
   for (i = 0; i < ehdr.e_phnum; i++) 
     {
@@ -291,7 +374,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
                   read_bytes = 0;
                   zero_bytes = ROUND_UP (page_offset + phdr.p_memsz, PGSIZE);
                 }
-              if (!load_segment (file, file_page, (void *) mem_page,
+              if (!load_segment (file, file_page, (void *) mem_page, //load the executable file이라고 함.
                                  read_bytes, zero_bytes, writable))
                 goto done;
             }
@@ -302,11 +385,11 @@ load (const char *file_name, void (**eip) (void), void **esp)
     }
 
   /* Set up stack. */
-  if (!setup_stack (esp))
+  if (!setup_stack (esp)) //user stack을 init하는 부분.
     goto done;
 
   /* Start address. */
-  *eip = (void (*) (void)) ehdr.e_entry;
+  *eip = (void (*) (void)) ehdr.e_entry; //실행하고자 하는 instruction의 시작 주소를 eip에 저장.
 
   success = true;
 

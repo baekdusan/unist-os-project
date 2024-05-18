@@ -179,19 +179,19 @@ tid_t thread_create(const char *name, int priority,
   ASSERT(function != NULL);
 
   /* Allocate thread. */
-  t = palloc_get_page(PAL_ZERO);
+  t = palloc_get_page(PAL_ZERO); //allocating one page
   if (t == NULL)
     return TID_ERROR;
 
   /* Initialize thread. */
-  init_thread(t, name, priority); // 여기서 init thread실행함.
-  tid = t->tid = allocate_tid();
+  init_thread(t, name, priority); // 여기서 init_thread실행함. thread structure를 초기화하는 곳.
+  tid = t->tid = allocate_tid(); // tid할당.
 
   /* Stack frame for kernel_thread(). */
-  kf = alloc_frame(t, sizeof *kf);
+  kf = alloc_frame(t, sizeof *kf); //stack할당.
   kf->eip = NULL;
-  kf->function = function;
-  kf->aux = aux;
+  kf->function = function; // 실행할 function address
+  kf->aux = aux; //실행할 function의 parameter
 
   /* Stack frame for switch_entry(). */
   ef = alloc_frame(t, sizeof *ef);

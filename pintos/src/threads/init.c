@@ -284,7 +284,8 @@ run_task(char **argv)
 
   printf("Executing '%s':\n", task);
 #ifdef USERPROG
-  process_wait(process_execute(task));
+  process_wait(process_execute(task)); // run task를 할 때 실행하는 코드. 그럼 process_execute로 가서 thread만들고 프로그램 실행시킴.
+//그리고 process wait으로 감. 초기 pintos는 process wait에 구현이 없음. 그래서 이거 진짜 wait으로 만들어야함.
 #else
   run_test(task);
 #endif
