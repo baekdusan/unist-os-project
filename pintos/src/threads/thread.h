@@ -122,6 +122,17 @@ struct thread // thread structure있는 곳.
 
    /* Owned by thread.c. */
    unsigned magic; /* Detects stack overflow. */
+   // syscall때 구현
+   struct file *file_descriptor[64];
+   int next_fd;
+   int exit_status; //종료상태 가지고 있기.
+   struct file *exec_file; //현재 실행중인 파일. //안씀.
+   struct list_elem child_elem; //parent가 child가질 때 사용하는 것
+   struct list child_list;  //이 list하나만 있으면 head ptr이런것도 필요 없을듯.
+   struct thread *parent; //부모 쓰레드
+   struct semaphore wait_sema; //자식 종료 대기시 사용.
+   struct semaphore exec_sema; //자식 프로그램 만들어지는거 대기 시 사용.
+   int load_success; //load 성공 여부.
 };
 
 /* If false (default), use round-robin scheduler.

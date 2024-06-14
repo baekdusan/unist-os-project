@@ -5,19 +5,19 @@
 enum 
   {
     /* Projects 2 and later. */
-    SYS_HALT,                   /* Halt the operating system. */
-    SYS_EXIT,                   /* Terminate this process. */
-    SYS_EXEC,                   /* Start another process. */
-    SYS_WAIT,                   /* Wait for a child process to die. */
-    SYS_CREATE,                 /* Create a file. */
-    SYS_REMOVE,                 /* Delete a file. */
-    SYS_OPEN,                   /* Open a file. */
-    SYS_FILESIZE,               /* Obtain a file's size. */
-    SYS_READ,                   /* Read from a file. */
-    SYS_WRITE,                  /* Write to a file. */
-    SYS_SEEK,                   /* Change position in a file. */
-    SYS_TELL,                   /* Report current position in a file. */
-    SYS_CLOSE,                  /* Close a file. */
+    SYS_HALT,                   /* Halt the operating system.0 */
+    SYS_EXIT,                   /* Terminate this process. 1*/
+    SYS_EXEC,                   /* Start another process. 2*/
+    SYS_WAIT,                   /* Wait for a child process to die. 3*/
+    SYS_CREATE,                 /* Create a file. 4*/
+    SYS_REMOVE,                 /* Delete a file. 5*/
+    SYS_OPEN,                   /* Open a file. 6*/
+    SYS_FILESIZE,               /* Obtain a file's size. 7*/
+    SYS_READ,                   /* Read from a file. 8*/
+    SYS_WRITE,                  /* Write to a file. 9*/
+    SYS_SEEK,                   /* Change position in a file. 10*/
+    SYS_TELL,                   /* Report current position in a file. 11*/
+    SYS_CLOSE,                  /* Close a file. 12*/
 
     /* Project 3 and optionally project 4. */
     SYS_MMAP,                   /* Map a file into memory. */

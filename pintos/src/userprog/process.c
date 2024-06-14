@@ -47,6 +47,11 @@ process_execute (const char *file_name) //argument passing 이 함수 고치기
   //현재 구현의 문제점은 command line을 parse하지 않고 그대로 넘겨준다는 것임.
   tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy); // 새로운 프로그램 실행할 쓰레드 만듬.
   //그리고 새롭게 만들어진 쓰레드가 start_process를 우선 실행하게 하네. start process는 load하고 원하는 프로그램 실행하게 하는 function.
+
+
+  sema_down(&thread_current()->exec_sema); //이걸로 parent가 child가 load를 다 했는지 확인함. child가 load를 다 했으면 parent가 다음으로 넘어갈 수 있게 해줌.
+
+
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy); 
   return tid;
@@ -84,7 +89,10 @@ start_process (void *file_name_) //argument passing 이 함수 고치기
   //if_.esp는 address of the top of the user stack. eip는 location of instruction.
   //user stack init해주고 esp, eip 설정해준다.
 
+  sema_up(&(thread_current() -> parent -> exec_sema)); //child가 load 다 했으면 parent대기를 풀어줌.
+
   if (!success){
+    thread_current() -> load_success = 0; //load 실패 표시. 후에 syscall에서 이거 보고 에러.
     palloc_free_page (file_name);
     thread_exit ();
   }
@@ -170,7 +178,27 @@ void argument_stack(char *argv[], int argc, void **esp){
 int
 process_wait (tid_t child_tid UNUSED) 
 {
-  return -1;
+//    for(int i = 0; i < 100000000000; i++){
+//    //        printf("wait\n");
+//    }
+  struct thread *child = NULL;
+  struct list_elem *e;
+  for(e = list_begin(&thread_current()->child_list); e != list_end(&thread_current()->child_list); e = list_next(e)){
+    struct thread *t = list_entry(e, struct thread, child_elem);
+    if(t->tid == child_tid){
+      child = t;
+      break;
+    }
+  }
+
+  if(child == NULL){ //내 자식이 아닌거 wait하라 했으니까 err
+    return -1;
+  }
+  sema_down(&child->wait_sema); //child가 종료될 때까지 기다림.
+  list_remove(&child->child_elem); //child list에서 제거해줌.
+  int status = child->exit_status;
+  sema_up(&child->exec_sema); //child가 제거될 수 있게 해줌.
+  return status; //자식 pid반환.
 }
 
 /* Free the current process's resources. */
@@ -179,7 +207,14 @@ process_exit (void)
 {
   struct thread *cur = thread_current ();
   uint32_t *pd;
-
+  struct list_elem *child;
+  for(child = list_begin(&cur->child_list); child != list_end(&cur->child_list); child = list_next(child)){
+    struct thread *child_thread = list_entry(child, struct thread, child_elem);
+    process_wait(child_thread->tid);
+  }
+  file_close(cur->exec_file);
+  sema_up(&cur->wait_sema);
+  sema_down(&cur->exec_sema);
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   pd = cur->pagedir;
@@ -310,6 +345,9 @@ load (const char *file_name, void (**eip) (void), void **esp)
       printf ("load: %s: open failed\n", file_name);
       goto done; 
     }
+
+  t -> exec_file = file; //file을 thread의 exec_file에 저장해줌. 나중에 file close할 때 사용할 것임.
+  file_deny_write(file); //file을 write 못하게 해줌. file이 write 못하게 해주는 것은 file이 실행되는 동안에만 해당함.
 
   /* Read and verify executable header. */
   //elf file을 parse하고 ELF header를 얻음. header에 다른 segment들 어디있고 이런 정보가 있음.

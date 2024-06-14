@@ -607,6 +607,19 @@ init_thread(struct thread *t, const char *name, int priority)
   t->nice = 0;
   t->recent_cpu = 0;
 
+  //systemcall에서 구현
+  t->exit_status = -1; //이렇게 설정하면 kernel로 인한 terminate시에 처리 되긴함.
+  for(int i=0; i<64; i++){
+    t->file_descriptor[i] = NULL;
+  }
+  t->next_fd = 2; //0,1은 stdin, stdout이니까 2부터 시작.
+  t -> exec_file = NULL;
+  t -> parent = thread_current();
+  t -> load_success = 1;
+  sema_init(&t -> wait_sema, 0);
+  sema_init(&t -> exec_sema, 0);
+  list_push_back(&thread_current() -> child_list, &t -> child_elem);
+
   old_level = intr_disable();
   list_push_back(&all_list, &t->allelem);
   intr_set_level(old_level);
