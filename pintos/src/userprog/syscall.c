@@ -9,6 +9,7 @@
 #include "threads/synch.h"
 #include "userprog/pagedir.h"
 #include "devices/shutdown.h"
+#include "devices/input.h"
 #include <string.h>
 
 static void syscall_handler (struct intr_frame *);
@@ -58,7 +59,7 @@ syscall_handler (struct intr_frame *f UNUSED)
   // printf("syscall number: %d\n", syscall_num);
     switch(syscall_num) { //user에서 푸시할 때, 마지막에 syscall number를 push했으므로 user stack의 esp로 int만큼 읽으면 number이다.
       case SYS_HALT:
-        printf("SYS_HALT\n");
+        // printf("SYS_HALT\n");
         shutdown_power_off();
         break;
       case SYS_EXIT:
@@ -81,7 +82,7 @@ syscall_handler (struct intr_frame *f UNUSED)
         // f -> eax = process_wait(pid);
         break;
       case SYS_CREATE: //create는 argument가 2개임. 앞에거는 file name, 뒤에거는 initsize
-        printf("SYS_CREATE\n");
+        // printf("SYS_CREATE\n");
         ptr_valid_check(f -> esp + 4);
         ptr_valid_check(f -> esp + 8);
         const char *file_name = *(uint32_t*)(f -> esp + 4);
@@ -90,7 +91,7 @@ syscall_handler (struct intr_frame *f UNUSED)
         f -> eax = mycreate(file_name, init_size);
         break;
       case SYS_REMOVE: //remove는 argument하나이다. file name
-        printf("SYS_REMOVE\n");
+        // printf("SYS_REMOVE\n");
         ptr_valid_check(f -> esp + 4);
         const char *file_name1 = *(uint32_t*)(f -> esp + 4);
         // ptr_valid_check(file_name1);
@@ -104,21 +105,21 @@ syscall_handler (struct intr_frame *f UNUSED)
         f -> eax = myopen(file_name2);
         break;
       case SYS_FILESIZE: //filesize는 fd하나만 받는다.
-        printf("SYS_FILESIZE\n");
-        // ptr_valid_check(f -> esp + 4);
-        // int fd = *(uint32_t*)(f -> esp + 4);
-        // f -> eax = file_length(thread_current()->file_descriptor[fd]);
+        // printf("SYS_FILESIZE\n");
+        ptr_valid_check(f -> esp + 4);
+        int fd = *(uint32_t*)(f -> esp + 4);
+        f -> eax = file_length(thread_current()->file_descriptor[fd]);
         break;
       case SYS_READ: // read 는 argument 총 3개 받음. fd, buffer ptr, size
-        printf("SYS_READ\n");
-        // ptr_valid_check(f-> esp + 4);
-        // ptr_valid_check(f-> esp + 8);
-        // ptr_valid_check(f-> esp + 12);
-        // int fd2 = *(uint32_t*)(f->esp + 4);
-        // void *buffer2 = *(uint32_t*)(f->esp + 8);
-        // unsigned size2 = *(uint32_t*)(f->esp + 12);
-        // ptr_valid_check(buffer2);
-        // f -> eax = myread(fd2, buffer2, size2);
+        // printf("SYS_READ\n");
+        ptr_valid_check(f-> esp + 4);
+        ptr_valid_check(f-> esp + 8);
+        ptr_valid_check(f-> esp + 12);
+        int fd2 = *(uint32_t*)(f->esp + 4);
+        void *buffer2 = *(uint32_t*)(f->esp + 8);
+        unsigned size2 = *(uint32_t*)(f->esp + 12);
+        ptr_valid_check(buffer2);
+        f -> eax = myread(fd2, buffer2, size2);
         break;
       case SYS_WRITE: //write는 3개의 argument를 받는다. fd, buffer ptr, size
         // printf("SYS_WRITE\n");
@@ -132,27 +133,27 @@ syscall_handler (struct intr_frame *f UNUSED)
         f -> eax = mywrite(fd1, buffer, size);
         break;
       case SYS_SEEK: //seek은 fd, position 두 개를 받음.
-        printf("SYS_SEEK\n");
-        // ptr_valid_check(f -> esp + 4);
-        // ptr_valid_check(f -> esp + 8);
-        // int fd3 = *(uint32_t*)(f -> esp + 4);
-        // unsigned position = *(uint32_t*)(f -> esp + 8);
-        // file_seek(thread_current()->file_descriptor[fd3], position);
+        // printf("SYS_SEEK\n");
+        ptr_valid_check(f -> esp + 4);
+        ptr_valid_check(f -> esp + 8);
+        int fd3 = *(uint32_t*)(f -> esp + 4);
+        unsigned position = *(uint32_t*)(f -> esp + 8);
+        file_seek(thread_current()->file_descriptor[fd3], position);
         break;
       case SYS_TELL: //fd 하나만 받음.
-        printf("SYS_TELL\n");
-        // ptr_valid_check(f -> esp + 4);
-        // int fd4 = *(uint32_t*)(f -> esp + 4);
-        // f -> eax = mytell(fd4);
+        // printf("SYS_TELL\n");
+        ptr_valid_check(f -> esp + 4);
+        int fd4 = *(uint32_t*)(f -> esp + 4);
+        f -> eax = mytell(fd4);
         break;
       case SYS_CLOSE: //fd 하나만 받음.
-        printf("SYS_CLOSE\n");
-        // ptr_valid_check(f -> esp + 4);
-        // int fd5 = *(uint32_t*)(f -> esp + 4);
-        // myclose(fd5);
+        // printf("SYS_CLOSE\n");
+        ptr_valid_check(f -> esp + 4);
+        int fd5 = *(uint32_t*)(f -> esp + 4);
+        myclose(fd5);
         break;
-      default:
-        printf("system call!\n");
+      // default:
+      //   printf("system call!\n");
     }
   // printf ("system call!\n");
   // thread_exit ();
@@ -202,7 +203,7 @@ int mywrite(int fd, const void *buffer, unsigned size){
     //     lock_release(&global_lock);
     //     return -1;
     // }
-    printf("여기 와야 consol인데\n");
+    // printf("여기 와야 consol인데\n");
     int num = file_write(cur->file_descriptor[fd], buffer, size);
     lock_release(&global_lock);
 
@@ -227,38 +228,38 @@ int myopen(const char *file){
     return fd;
 }
 
-// int myread(int fd, void *buffer, unsigned size){
-//     struct thread *cur = thread_current();
-//     lock_acquire(&global_lock);
-//     if(fd == 0){ //key board에서 읽어옴.
-//         uint8_t ch = input_getc();
-//         lock_release(&global_lock);
-//         return ch;
-//     }
-//     if(fd < 2 || fd >= 64 || cur->file_descriptor[fd] == NULL){ //file descriptor범위를 넘어섬.
-//         lock_release(&global_lock);
-//         return -1;
-//     }
-//     int num = file_read(cur->file_descriptor[fd], buffer, size); //아닌 경우 file에서 읽기.
-//     lock_release(&global_lock);
-//     return num;
-// }
+int myread(int fd, void *buffer, unsigned size){
+    struct thread *cur = thread_current();
+    lock_acquire(&global_lock);
+    if(fd == 0){ //key board에서 읽어옴.
+        uint8_t ch = input_getc();
+        lock_release(&global_lock);
+        return ch;
+    }
+    if(fd < 2 || fd >= 64 || cur->file_descriptor[fd] == NULL){ //file descriptor범위를 넘어섬.
+        lock_release(&global_lock);
+        return -1;
+    }
+    int num = file_read(cur->file_descriptor[fd], buffer, size); //아닌 경우 file에서 읽기.
+    lock_release(&global_lock);
+    return num;
+}
 
-// int mytell(int fd){
-//     if(thread_current()->file_descriptor[fd] == NULL){
-//         return -1;
-//     }
-//     return file_tell(thread_current()->file_descriptor[fd]);
-// }
+int mytell(int fd){
+    if(thread_current()->file_descriptor[fd] == NULL){
+        return -1;
+    }
+    return file_tell(thread_current()->file_descriptor[fd]);
+}
 
-// void myclose(int fd){
-//     struct thread *cur = thread_current();
-//     if (fd < 2 || fd >= 64 || cur->file_descriptor[fd] == NULL){
-//         return;
-//     }
-//     file_close(cur->file_descriptor[fd]);
-//     cur->file_descriptor[fd] = NULL;
-// }
+void myclose(int fd){
+    struct thread *cur = thread_current();
+    if (fd < 2 || fd >= 64 || cur->file_descriptor[fd] == NULL){ //err처리.
+        return; 
+    }
+    file_close(cur->file_descriptor[fd]);
+    cur->file_descriptor[fd] = NULL;
+}
 
 // int myexec(const char *cmdline){
 //     if(cmdline == NULL){ //error check
