@@ -20,6 +20,8 @@
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
+void argument_stack(char **argv, int argc, void **esp);
+void push(char** ary, int num, void **esp);
 
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
@@ -37,20 +39,54 @@ process_execute (const char *file_name) //argument passing 이 함수 고치기
   if (fn_copy == NULL)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE); //문자열 복사 filename을 fn_copy로 복사함.
-  //argv,argc를 넘기는 것 때문에 start_process에서 parsing을 하려고 햇는데 그렇게 하면 여기 새로운 thread의 이름이 이상해짐. file이름이 아니게됨.
-  char *delim = " ";  // 구분자는 공백, 쉼표, 점
-  char *saveptr;
-  file_name = strtok_r(file_name, delim, &saveptr); //file_name 에서 가장 첫번쨰 토큰을 뽑아냄. 추후 therad name으로 사용.
-  //위 strtok_r에 주소 넣으면 그 주소 내용 변경된다. 그래서 file_name을 넣어줌.
-  printf("first token file_name: %s\n", file_name);
+
+  // //
+  // //argv,argc를 넘기는 것 때문에 start_process에서 parsing을 하려고 햇는데 그렇게 하면 여기 새로운 thread의 이름이 이상해짐. file이름이 아니게됨.
+  // char *delim = " ";  // 구분자는 공백, 쉼표, 점
+  // char *saveptr;
+  // file_name = strtok_r(file_name, delim, &saveptr); //file_name 에서 가장 첫번쨰 토큰을 뽑아냄. 추후 therad name으로 사용.
+  // //위 strtok_r에 주소 넣으면 그 주소 내용 변경된다. 그래서 file_name을 넣어줌.
+  // printf("first token file_name: %s\n", file_name);
+  // //
+  char filename_copy[128];
+  strlcpy(filename_copy, file_name, strlen(file_name)+1);
+  char *save_ptr, *token;
+  token = strtok_r(filename_copy, " ", &save_ptr);
+  struct file *file = NULL;
+  file = filesys_open(token);
+  if(file==NULL){ //만약 파일이 존재하지 않으면 fail
+    file_close(file);
+    return -1;
+  }
+
+  // char *token, *save_ptr, *filename;
+  // filename = palloc_get_page(0);
+  // if (filename == NULL)
+  //   return TID_ERROR;
+  // strlcpy (filename, file_name, PGSIZE);
+  // token = strtok_r (filename, " ", &save_ptr);
+  // // printf("first token file_name: %s\n", file_name);
+
   /* Create a new thread to execute FILE_NAME. */
   //현재 구현의 문제점은 command line을 parse하지 않고 그대로 넘겨준다는 것임.
-  tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy); // 새로운 프로그램 실행할 쓰레드 만듬.
+  // tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy); // 새로운 프로그램 실행할 쓰레드 만듬.
+  tid = thread_create (token, PRI_DEFAULT, start_process, fn_copy);
+  // sema_down(&thread_current()->file_semaphore);
+
   //그리고 새롭게 만들어진 쓰레드가 start_process를 우선 실행하게 하네. start process는 load하고 원하는 프로그램 실행하게 하는 function.
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy); 
+  ///
+  // for(struct list_elem *iter = list_begin(&thread_current()->child_list); iter != list_end(&thread_current()->child_list); iter = list_next(iter))
+  // {
+  //   struct thread *t = list_entry(iter, struct thread, child_element);
+  //   if(t->chk == 1)
+  //     return process_wait(tid);
+  // }
+  ///
   return tid;
 }
+
 
 /* A thread function that loads a user process and starts it
    running. */ //interrupt frame을
@@ -60,15 +96,15 @@ start_process (void *file_name_) //argument passing 이 함수 고치기
   char *file_name = file_name_; //comand line임.
   struct intr_frame if_; //interrupt frame선언. kernel space에 있는 user param을 저장하는 stack임.
   bool success;
-  ///argument parsing부분 구현 argv와 argc를 strtok_r을 이요해서 구현
-  char *token, *save_ptr;
-  char *argv[128]; //document에 따르면, kernel에 pass하는데에 128byte limit이 있다고 함.
-  int argc = 0; //strtok_r은 문자열을 받아서 해당 문자열을 기준대로 나눠서 나눈 문자열의 시작 포인터를 반환해줌. 그래서 원본 문자열 free되면 접근이 안됨.
-  //아 동작방식이 원본 문자열에서 기준으로 받은 것들을 다 \0으로 바꾸는 것이 동작 방식이라고 함.
-  for(token = strtok_r(file_name, " ", &save_ptr); token != NULL; token = strtok_r(NULL, " ", &save_ptr)){
-      argv[argc] = token;
-      argc++;
-  }
+  // ///argument parsing부분 구현 argv와 argc를 strtok_r을 이요해서 구현
+  // char *token, *save_ptr;
+  // char *argv[128]; //document에 따르면, kernel에 pass하는데에 128byte limit이 있다고 함.
+  // int argc = 0; //strtok_r은 문자열을 받아서 해당 문자열을 기준대로 나눠서 나눈 문자열의 시작 포인터를 반환해줌. 그래서 원본 문자열 free되면 접근이 안됨.
+  // //아 동작방식이 원본 문자열에서 기준으로 받은 것들을 다 \0으로 바꾸는 것이 동작 방식이라고 함.
+  // for(token = strtok_r(file_name, " ", &save_ptr); token != NULL; token = strtok_r(NULL, " ", &save_ptr)){
+  //     argv[argc] = token;
+  //     argc++;
+  // }
   //그래서 이 과정이 끝나면 argv에는 각 argument의 '시작 주소'가 들어가게 된다.
   ///
 
@@ -78,16 +114,20 @@ start_process (void *file_name_) //argument passing 이 함수 고치기
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
   //기존 file_name대신 argv[0]을 넣어줘서 실행할 프로그램의 이름을 넣음. 이로써 load는 이 파일을 executable을 찾아서 mem에 load한다.
-  success = load (argv[0], &if_.eip, &if_.esp);  //disk에 있는 binary file을 mem에 올린다.
+  success = load (file_name, &if_.eip, &if_.esp);  //disk에 있는 binary file을 mem에 올린다.
   //pintos에서는 load함수가 file name을 받아서 해당 file을 disk에서 mem으로 옮기고, 실행되어야 할 instruction을 eip에 저장한다.
   //그리고 user stack의 top을 esp에 저장해준다.
   //if_.esp는 address of the top of the user stack. eip는 location of instruction.
   //user stack init해주고 esp, eip 설정해준다.
 
-  if (!success){
-    palloc_free_page (file_name);
+  palloc_free_page (file_name);
+
+  // sema_up(&thread_current()->parent->file_semaphore);
+  if (!success)
+  {
+    // thread_current()->chk = 1;
     thread_exit ();
-  }
+  } 
 
 //  /* If load failed, quit. */ ///이 부분 argv를 포인터 배열로 하면 free page를 하기 때문에 받아오지를 못함. 그래서 변경해야함.
 //  palloc_free_page (file_name);
@@ -98,9 +138,9 @@ start_process (void *file_name_) //argument passing 이 함수 고치기
   //user program을 실행할 때, 우리는 argument를 pass 해줘야 한다. 이 부분을 구현해주면 된다.
   //즉, 이 부분에 stack을 setup하는 함수를 넣으면 됨. 이렇게 넣으면 user mode로 돌아갔을 때 stack 으로부터 pop을 통해 argument를 가져간다.
     //if_.esp가 user stack의 top을 가리키고 있따.
-  argument_stack(argv, argc, &if_.esp); //esp pointer의 pointer를 넣음.
-  hex_dump(if_.esp, if_.esp, PHYS_BASE - if_.esp, true); //stack의 내용을 출력해준다.
-  palloc_free_page (file_name);
+  // argument_stack(argv, argc, &if_.esp); //esp pointer의 pointer를 넣음.
+  // hex_dump(if_.esp, if_.esp, PHYS_BASE - if_.esp, true); //stack의 내용을 출력해준다.
+  // palloc_free_page (file_name);
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
      threads/intr-stubs.S).  Because intr_exit takes all of its
@@ -111,52 +151,52 @@ start_process (void *file_name_) //argument passing 이 함수 고치기
   NOT_REACHED ();
 }
 
-void argument_stack(char *argv[], int argc, void **esp){
-  size_t len;
-  int arg_bytes = 0;
-  char *argv_addr[argc]; //argument를 넣어준 이후에는 각 argument가 저장된 주소를 넣어줘야해서 이거 유지해야함.
-  //user stack에 argument를 넣음.
-  for(int i = argc -1; i >= 0; i--){
-    len = strlen(argv[i]) + 1; // '/0'을 넣어줘야 하니까. +1해서 넣어줌
-    arg_bytes += len;
-    *esp -= len; //stack은 높은 주소에서 내려가니까.
-    memcpy(*esp, argv[i], len); //argument를 stack에 넣어줌.
-    //argv[i]는 해당 argument의 시작주소이다. 그래서 memcpy로 해당 시작주소가 가르키는 값에서 len만큼을 복사해줌. 그럼 tok으로 나눌 때 \0들어가있으니까 len+1로하면 그것까지 됨.
-    //그래서 이제는 file name이 free되어도 상관 없음.
-    argv_addr[i] = *esp; //argument의 주소를 저장해줌.
-  }
-  //convention에 이 argument가 4byte에 align되어 있어야 한다고 함. 0으로 align해줌.
-  while(arg_bytes % 4 != 0){
-    *esp -= 1;
-    *((uint8_t*)*esp) = 0; //Esp는 esp의 pointer의 pointer임. 그래서 *로 한번 참조하면 esp가 됨. 그걸 uint8_t로 형변환함. 1byte를 넣기 위해서.
-    //그래서 *로 한번 더 해당 주소를 참조하면 esp의 값인거니까 거기를 0으로 넣어주면 됨.
-    arg_bytes++;
-  }
-//  uint32_t padding = 4 - ((uintptr_t)*esp % 4); //argument byte기준인지 esp기준인지 잘 모르겠음
-//  while(padding != 0){
-//    *esp -= 1;
-//    *((uint8_t*)*esp) = 0; //1byte넣기.
-//    padding--;
-//  }
-  //Null terminate string을 넣어서 argument다 넣은거 표시
-  *esp -= sizeof(char*); //4byte
-  *((char**)*esp) = 0; //char*로 넣도록 하기 위해 이렇게 해줌.
-  //argument의 주소를 넣어줌.
-  for(int i = argc -1; i >= 0; i--){
-    *esp -= sizeof(char*);
-    *((char**)*esp) = argv_addr[i];
-  }
-  //argv의 주소를 넣어줌.
-  char **argv_start = (char**)*esp;
-  *esp -= sizeof(char**); //type이 char**임.
-  *((char***)*esp) = argv_start;
-  //argc를 넣어줌.
-  *esp -= sizeof(int);
-  *((int*)*esp) = argc;
-  //return address를 넣어줌.
-  *esp -= sizeof(void*);
-  *((void**)*esp) = 0;
-}
+// void argument_stack(char *argv[], int argc, void **esp){
+//   size_t len;
+//   int arg_bytes = 0;
+//   char *argv_addr[argc]; //argument를 넣어준 이후에는 각 argument가 저장된 주소를 넣어줘야해서 이거 유지해야함.
+//   //user stack에 argument를 넣음.
+//   for(int i = argc -1; i >= 0; i--){
+//     len = strlen(argv[i]) + 1; // '/0'을 넣어줘야 하니까. +1해서 넣어줌
+//     arg_bytes += len;
+//     *esp -= len; //stack은 높은 주소에서 내려가니까.
+//     memcpy(*esp, argv[i], len); //argument를 stack에 넣어줌.
+//     //argv[i]는 해당 argument의 시작주소이다. 그래서 memcpy로 해당 시작주소가 가르키는 값에서 len만큼을 복사해줌. 그럼 tok으로 나눌 때 \0들어가있으니까 len+1로하면 그것까지 됨.
+//     //그래서 이제는 file name이 free되어도 상관 없음.
+//     argv_addr[i] = *esp; //argument의 주소를 저장해줌.
+//   }
+//   //convention에 이 argument가 4byte에 align되어 있어야 한다고 함. 0으로 align해줌.
+//   while(arg_bytes % 4 != 0){
+//     *esp -= 1;
+//     *((uint8_t*)*esp) = 0; //Esp는 esp의 pointer의 pointer임. 그래서 *로 한번 참조하면 esp가 됨. 그걸 uint8_t로 형변환함. 1byte를 넣기 위해서.
+//     //그래서 *로 한번 더 해당 주소를 참조하면 esp의 값인거니까 거기를 0으로 넣어주면 됨.
+//     arg_bytes++;
+//   }
+// //  uint32_t padding = 4 - ((uintptr_t)*esp % 4); //argument byte기준인지 esp기준인지 잘 모르겠음
+// //  while(padding != 0){
+// //    *esp -= 1;
+// //    *((uint8_t*)*esp) = 0; //1byte넣기.
+// //    padding--;
+// //  }
+//   //Null terminate string을 넣어서 argument다 넣은거 표시
+//   *esp -= sizeof(char*); //4byte
+//   *((char**)*esp) = 0; //char*로 넣도록 하기 위해 이렇게 해줌.
+//   //argument의 주소를 넣어줌.
+//   for(int i = argc -1; i >= 0; i--){
+//     *esp -= sizeof(char*);
+//     *((char**)*esp) = argv_addr[i];
+//   }
+//   //argv의 주소를 넣어줌.
+//   char **argv_start = (char**)*esp;
+//   *esp -= sizeof(char**); //type이 char**임.
+//   *((char***)*esp) = argv_start;
+//   //argc를 넣어줌.
+//   *esp -= sizeof(int);
+//   *((int*)*esp) = argc;
+//   //return address를 넣어줌.
+//   *esp -= sizeof(void*);
+//   *((void**)*esp) = 0;
+// }
 
 /* Waits for thread TID to die and returns its exit status.  If
    it was terminated by the kernel (i.e. killed due to an
@@ -170,6 +210,24 @@ void argument_stack(char *argv[], int argc, void **esp){
 int
 process_wait (tid_t child_tid UNUSED) 
 {
+  for(int i=0; i< 1000000000; i++){
+    
+  }
+  // struct list *children = &(thread_current())->child_list;
+  // int ret = -1;
+  // for(struct list_elem *iterator = list_begin(children); iterator != list_end(children); iterator = list_next(iterator))
+  // {
+  //   struct thread* child_thread = list_entry(iterator, struct thread, child_element);
+  //   if(child_thread == NULL)
+  //     return TID_ERROR;
+  //   if(child_tid == child_thread->tid){
+  //     sema_down(&(child_thread->child_semaphore));//공유자원을 가져가는
+  //     list_remove(&(child_thread->child_element));
+  //     ret = child_thread->exit_status;
+  //     sema_up(&(child_thread->parent_semaphore));//공유자원을 내놓는
+  //     return ret;
+  //   }
+  // }
   return -1;
 }
 
@@ -196,6 +254,8 @@ process_exit (void)
       pagedir_activate (NULL);
       pagedir_destroy (pd);
     }
+  // sema_up(&(cur->child_semaphore));
+  // sema_down(&(cur->parent_semaphore));
 }
 
 /* Sets up the CPU for running user code in the current
@@ -303,8 +363,22 @@ load (const char *file_name, void (**eip) (void), void **esp)
     goto done;
   process_activate (); //set cr3 register라는데 cr3 register가 뭔지 모르겠음.
 
+  // ///argument parsing부분 구현 argv와 argc를 strtok_r을 이요해서 구현
+  char *token, *save_ptr;
+  char *argv[128]; //document에 따르면, kernel에 pass하는데에 128byte limit이 있다고 함.
+  int argc = 0; //strtok_r은 문자열을 받아서 해당 문자열을 기준대로 나눠서 나눈 문자열의 시작 포인터를 반환해줌. 그래서 원본 문자열 free되면 접근이 안됨.
+  //아 동작방식이 원본 문자열에서 기준으로 받은 것들을 다 \0으로 바꾸는 것이 동작 방식이라고 함.
+  char filename_copy[128];
+  strlcpy(filename_copy, file_name, strlen(file_name)+1);
+  for(token = strtok_r(filename_copy, " ", &save_ptr); token != NULL; token = strtok_r(NULL, " ", &save_ptr)){
+      argv[argc] = token;
+      argc++;
+  }
+
+  char* file_copy2 = argv[0];
+
   /* Open executable file. */
-  file = filesys_open (file_name);
+  file = filesys_open (file_copy2);
   if (file == NULL) 
     {
       printf ("load: %s: open failed\n", file_name);
@@ -388,6 +462,9 @@ load (const char *file_name, void (**eip) (void), void **esp)
   if (!setup_stack (esp)) //user stack을 init하는 부분.
     goto done;
 
+  push(argv, argc, esp);
+
+
   /* Start address. */
   *eip = (void (*) (void)) ehdr.e_entry; //실행하고자 하는 instruction의 시작 주소를 eip에 저장.
 
@@ -395,10 +472,112 @@ load (const char *file_name, void (**eip) (void), void **esp)
 
  done:
   /* We arrive here whether the load is successful or not. */
-  file_close (file);
+  //// file_close (file);
+  // if(success == 1){
+  //   t->current_file = file;
+  //   file_deny_write(file);
+  // }
   return success;
 }
 
+
+void push(char** ary, int num, void **esp)
+{
+  char* save[150];
+  int sum = 0;
+  for(int i=num-1; i>=0; i--)
+  {
+    int len = strlen(ary[i]);
+    sum += (len+1);
+    *esp -= (len+1);
+    save[i] = *esp;
+    for(int j = 0; j<=len-1; j++){
+      **(uint8_t **)esp = ary[i][j];
+      *esp+=1;
+    }
+    **(uint8_t **)esp = '\0';
+    *esp-=len;
+  }
+  ///////////////////////////////////////////
+  while(sum%4 !=0 )
+  {
+    (*esp)--;
+    **(uint8_t **)esp = 0;
+    sum++;
+  }
+  ///////////////////////////////////////////
+  *esp -= 4;
+  **(uint32_t**)esp = 0;
+  //////////////////////////////////////////////
+  for(int i=num-1; i>=0; i--)
+  {
+    *esp-=4;
+    **(uint32_t**)esp = save[i];
+  }
+  //////////////////////////////////////////
+  *esp -= 4;
+  **(uint32_t**)esp = *esp+4;
+  //////
+  *esp -= 4;
+  **(uint32_t**)esp = num;
+  ///////////
+  *esp -= 4;
+  **(uint32_t**)esp = 0;
+  //////
+}
+
+
+
+void argument_stack(char *argv[], int argc, void **esp){
+  size_t len;
+  int arg_bytes = 0;
+  char *argv_addr[argc]; //argument를 넣어준 이후에는 각 argument가 저장된 주소를 넣어줘야해서 이거 유지해야함.
+  //user stack에 argument를 넣음.
+  for(int i = argc -1; i >= 0; i--){
+    len = strlen(argv[i]) + 1; // '/0'을 넣어줘야 하니까. +1해서 넣어줌
+    arg_bytes += len;
+    *esp -= len; //stack은 높은 주소에서 내려가니까.
+    memcpy(*esp, argv[i], len); //argument를 stack에 넣어줌.
+    //argv[i]는 해당 argument의 시작주소이다. 그래서 memcpy로 해당 시작주소가 가르키는 값에서 len만큼을 복사해줌. 그럼 tok으로 나눌 때 \0들어가있으니까 len+1로하면 그것까지 됨.
+    //그래서 이제는 file name이 free되어도 상관 없음.
+    argv_addr[i] = *esp; //argument의 주소를 저장해줌.
+  }
+  //convention에 이 argument가 4byte에 align되어 있어야 한다고 함. 0으로 align해줌.
+  while(arg_bytes % 4 != 0){
+    *esp -= 1;
+    *((uint8_t*)*esp) = 0; //Esp는 esp의 pointer의 pointer임. 그래서 *로 한번 참조하면 esp가 됨. 그걸 uint8_t로 형변환함. 1byte를 넣기 위해서.
+    //그래서 *로 한번 더 해당 주소를 참조하면 esp의 값인거니까 거기를 0으로 넣어주면 됨.
+    arg_bytes++;
+  }
+//  uint32_t padding = 4 - ((uintptr_t)*esp % 4); //argument byte기준인지 esp기준인지 잘 모르겠음
+//  while(padding != 0){
+//    *esp -= 1;
+//    *((uint8_t*)*esp) = 0; //1byte넣기.
+//    padding--;
+//  }
+  //Null terminate string을 넣어서 argument다 넣은거 표시
+  *esp -= sizeof(char*); //4byte
+  *((char**)*esp) = 0; //char*로 넣도록 하기 위해 이렇게 해줌.
+  //argument의 주소를 넣어줌.
+  for(int i = argc -1; i >= 0; i--){
+    *esp -= sizeof(char*);
+    *((char**)*esp) = argv_addr[i];
+  }
+  //argv의 주소를 넣어줌.
+  char **argv_start = (char**)*esp;
+  *esp -= sizeof(char**); //type이 char**임.
+  *((char***)*esp) = argv_start;
+  //argc를 넣어줌.
+  *esp -= sizeof(int);
+  *((int*)*esp) = argc;
+  //return address를 넣어줌.
+  *esp -= sizeof(void*);
+  *((void**)*esp) = 0;
+}
+
+
+
+
 /* load() helpers. */
 
 static bool install_page (void *upage, void *kpage, bool writable);

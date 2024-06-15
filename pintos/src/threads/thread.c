@@ -202,6 +202,22 @@ tid_t thread_create(const char *name, int priority,
   sf->eip = switch_entry;
   sf->ebp = 0;
 
+  #ifdef USERPROG
+  t -> next_fd = 2;
+  // t->exit_status = -1; //이렇게 설정하면 kernel로 인한 terminate시에 처리 되긴함.
+  for(int i=0; i<64; i++){
+    t->file_descriptor[i] = NULL;
+  }
+  // t -> parent = thread_current(); //set parent process
+  t -> exit_status = NULL; //initialize exit status
+  // t -> flag = 1;
+  //push child process to child process list
+  // list_push_back(&thread_current() -> child_list, &t -> childelem);
+  // sema_init(&t -> sema_wait, 0);  //initialize semaphore to 0
+  // sema_init(&t -> sema_exec, 0);  //initialize for executing child
+  // list_init(&t -> page_list); //initialize page list
+  #endif
+
   /* Add to run queue. */
   thread_unblock(t);
   if (t->priority > thread_current()->priority)
@@ -597,6 +613,10 @@ init_thread(struct thread *t, const char *name, int priority)
   memset(t, 0, sizeof *t);
   t->status = THREAD_BLOCKED;
   strlcpy(t->name, name, sizeof t->name);
+  //
+  // printf("In init_thread() thread name : %s\n", name);
+  //
+
   t->stack = (uint8_t *)t + PGSIZE;
   t->priority = priority;
   t->original_priority = priority; // original_priority 초기화
